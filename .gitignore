@@ -1,0 +1,13 @@
+.env
+data/parquet/*.parquet
+data/trading.db
+logs/*.log
+__pycache__/
+*.pyc
+.eggs/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/

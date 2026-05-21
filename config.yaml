@@ -1,0 +1,34 @@
+market_type: futures  # spot or futures
+
+exchange:
+  binance:
+    testnet: false
+    proxy: ""  # e.g. http://127.0.0.1:7890
+
+trading:
+  symbols:
+    - BTC/USDT
+  timeframes:
+    - 1h
+  default_leverage: 1
+
+data:
+  parquet_dir: data/parquet
+  database_url: sqlite+aiosqlite:///data/trading.db
+
+# Strategy-specific params (passed to strategy.params)
+strategy_params:
+  ma_crossover:
+    fast_period: 20
+    slow_period: 50
+  rsi_reversal:
+    period: 14
+    oversold: 30
+    overbought: 70
+
+risk:
+  max_drawdown_pct: 0.2       # 20% max drawdown before halt
+  max_position_pct: 0.1       # Max 10% of equity per position
+  max_open_positions: 5
+  min_confidence: 0.5
+  max_leverage: 3
