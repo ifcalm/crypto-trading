@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from collections import defaultdict
 
-from crypto_trading.core.types import OHLCV, Signal
+from crypto_trading.core.types import OHLCV, Signal, Ticker
 
 
 class Strategy(ABC):
@@ -22,6 +22,11 @@ class Strategy(ABC):
 
     async def on_stop(self) -> None:
         pass
+
+    async def select_symbols(self, tickers: list[Ticker]) -> list[str]:
+        """Override to filter symbols by strategy-specific criteria.
+        Default: no further filtering — returns all ticker symbols."""
+        return [t.symbol for t in tickers]
 
     def _add_bar(self, symbol: str, bar: OHLCV) -> None:
         self._bar_history[symbol].append(bar)

@@ -172,6 +172,19 @@ class BinanceExchange(Exchange):
         except Exception as e:
             raise ExchangeError(f"Failed to fetch ticker for {symbol}: {e}") from e
 
+    async def fetch_tickers(self, symbols: list[str] | None = None) -> list[Ticker]:
+        try:
+            raw = await self._client.fetch_tickers(symbols)
+            return [_parse_ticker(v) for v in raw.values()]
+        except Exception as e:
+            raise ExchangeError(f"Failed to fetch tickers: {e}") from e
+
+    async def fetch_markets(self) -> list[dict]:
+        try:
+            return await self._client.fetch_markets()
+        except Exception as e:
+            raise ExchangeError(f"Failed to fetch markets: {e}") from e
+
     async def fetch_balance(self) -> dict[str, Balance]:
         try:
             raw = await self._client.fetch_balance()

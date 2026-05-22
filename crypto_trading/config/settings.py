@@ -25,6 +25,13 @@ class DataConfig(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///data/trading.db"
 
 
+class ScreenerConfig(BaseSettings):
+    enabled: bool = False
+    min_volume_usdt: float = 10_000_000
+    quote_currency: str = "USDT"
+    max_symbols: int = 20
+
+
 class RiskConfig(BaseSettings):
     max_drawdown_pct: float = 0.2
     max_position_pct: float = 0.1
@@ -45,6 +52,7 @@ class Settings(BaseSettings):
     trading: TradingConfig = Field(default_factory=TradingConfig)
     data: DataConfig = Field(default_factory=DataConfig)
     risk: RiskConfig = Field(default_factory=RiskConfig)
+    screener: ScreenerConfig = Field(default_factory=ScreenerConfig)
     strategy_params: dict = Field(default_factory=dict)
 
     @classmethod
@@ -60,6 +68,7 @@ class Settings(BaseSettings):
         trading_data = data.pop("trading", {})
         data_data = data.pop("data", {})
         risk_data = data.pop("risk", {})
+        screener_data = data.pop("screener", {})
 
         return cls(
             market_type=data.pop("market_type", "futures"),
@@ -67,6 +76,7 @@ class Settings(BaseSettings):
             trading=TradingConfig(**trading_data),
             data=DataConfig(**data_data),
             risk=RiskConfig(**risk_data),
+            screener=ScreenerConfig(**screener_data),
             strategy_params=data.get("strategy_params", {}),
         )
 
