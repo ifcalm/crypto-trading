@@ -20,7 +20,7 @@ class BinanceWebSocket:
         market_type: str = "futures",
         proxy: str | None = None,
     ):
-        self.symbols = [s.lower().replace("/", "") for s in symbols]
+        self.symbols = [self._normalize(s) for s in symbols]
         self.timeframes = timeframes
         self.market_type = market_type
         self._ws_url = WS_BASE_SPOT if market_type == "spot" else WS_BASE
@@ -28,6 +28,15 @@ class BinanceWebSocket:
         self._queue: asyncio.Queue[OHLCV] = asyncio.Queue()
         self._running = False
         self._ws: websockets.WebSocketClientProtocol | None = None
+
+    @staticmethod
+    def _normalize(symbol: str) -> str:
+        # "BTC/USDT" -> "btcusdt"
+        # "TOSHI/USDT:USDT" -> "toshiusdt" (futures with settle suffix)
+        s = symbol.lower().replace("/", "")
+        if ":" in s:
+            s = s.split(":")[0]
+        return s
 
     async def stream(self):
         """Async generator yielding completed OHLCV bars."""

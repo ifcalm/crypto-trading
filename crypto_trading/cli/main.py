@@ -172,9 +172,79 @@ def backtest(
     )
 
 
+def _normalize_symbols(raw: list[str] | None) -> list[str] | None:
+    """Split comma-separated symbols like ['BTC/USDT,ETH/USDT'] -> ['BTC/USDT', 'ETH/USDT']."""
+    if raw is None:
+        return None
+    result = []
+    for s in raw:
+        result.extend(part.strip() for part in s.split(",") if part.strip())
+    return result or None
+
+
+async def _resolve_symbols(
+    symbols: list[str] | None,
+    settings,
+    strategy,
+    proxy: str,
+    market: str,
+) -> list[str]:
+    """Resolve symbols: use explicit list or auto-screen from exchange."""
+    if symbols:
+        symbols = _normalize_symbols(symbols)
+    if symbols:
+        return symbols
+
+    scr = settings.screener
+    if not scr.enabled:
+        symbols = settings.trading.symbols
+        console.print(f"[yellow]Screener disabled, using config symbols: {symbols}[/yellow]")
+        return symbols
+
+    console.print("[bold]Auto-screening symbols from exchange...[/bold]")
+
+    exchange = BinanceExchange(
+        market_type=market,
+        proxy=proxy,
+    )
+
+    try:
+        tickers = await exchange.fetch_tickers()
+        console.print(f"  Fetched {len(tickers)} tickers from exchange")
+
+        from crypto_trading.screener import (
+            MaxSymbolsFilter,
+            MinVolumeFilter,
+            QuoteCurrencyFilter,
+            SymbolScreener,
+        )
+
+        screener = SymbolScreener([
+            QuoteCurrencyFilter(quote=scr.quote_currency),
+            MinVolumeFilter(min_volume_usdt=scr.min_volume_usdt),
+            MaxSymbolsFilter(max_symbols=scr.max_symbols),
+        ])
+        tickers = [t for t in tickers if t.symbol in screener.apply(tickers)]
+        console.print(f"  After screener: {len(tickers)} symbols")
+
+        resolved = await strategy.select_symbols(tickers)
+        # Normalize futures symbols: "TOSHI/USDT:USDT" -> "TOSHI/USDT"
+        resolved = [s.split(":")[0] if ":" in s else s for s in resolved]
+        console.print(f"  After strategy filter: {len(resolved)} symbols")
+
+        if not resolved:
+            console.print("[red]No symbols matched. Falling back to config symbols.[/red]")
+            return settings.trading.symbols
+
+        console.print(f"[green]Selected symbols: {resolved}[/green]")
+        return resolved
+    finally:
+        await exchange.close()
+
+
 async def _paper(
     strategy_name: str,
-    symbols: list[str],
+    symbols: list[str] | None,
     timeframes: list[str],
     capital: str,
     market: str,
@@ -185,7 +255,13 @@ async def _paper(
     settings = load_settings(config_path)
     strategy_params = settings.strategy_params.get(strategy_name, {})
 
-    strategy = get_strategy(name=strategy_name, symbols=symbols, params=strategy_params)
+    resolved_symbols = await _resolve_symbols(
+        symbols, settings,
+        get_strategy(name=strategy_name, symbols=[], params=strategy_params),
+        proxy or settings.exchange.proxy, market,
+    )
+
+    strategy = get_strategy(name=strategy_name, symbols=resolved_symbols, params=strategy_params)
     store = ParquetStore(base_dir=settings.data.parquet_dir)
 
     broker = PaperBroker(
@@ -194,7 +270,7 @@ async def _paper(
     )
 
     ws_client = BinanceWebSocket(
-        symbols=symbols,
+        symbols=resolved_symbols,
         timeframes=timeframes,
         market_type=market,
         proxy=proxy or settings.exchange.proxy,
@@ -218,7 +294,8 @@ async def _paper(
         initial_capital=Decimal(capital),
     )
 
-    console.print(f"[bold]Paper trading: {strategy_name} on {symbols} ({timeframes})[/bold]")
+    msg = f"[bold]Paper trading: {strategy_name} on {resolved_symbols} ({timeframes})[/bold]"
+    console.print(msg)
     console.print(f"Market: {market}, Leverage: {leverage}x, Capital: ${capital}")
     console.print("Press Ctrl+C to stop")
     console.print()
@@ -229,8 +306,8 @@ async def _paper(
 @app.command()
 def paper(
     strategy: str = typer.Option(..., "--strategy", help="Strategy name"),
-    symbols: list[str] = typer.Option(
-        ..., "--symbols", "-s", help="Trading pairs, comma-separated"
+    symbols: list[str] | None = typer.Option(
+        None, "--symbols", "-s", help="Trading pairs, comma-separated. Auto-screened if omitted."
     ),
     timeframes: list[str] = typer.Option(["1h"], "--timeframes", "-t", help="Candle timeframes"),
     capital: str = typer.Option("10000", "--capital", help="Initial capital in USDT"),
@@ -247,7 +324,7 @@ def paper(
 
 async def _live(
     strategy_name: str,
-    symbols: list[str],
+    symbols: list[str] | None,
     timeframes: list[str],
     capital: str,
     market: str,
@@ -261,8 +338,17 @@ async def _live(
         console.print("[red]API key not configured. Set BINANCE_API_KEY in .env[/red]")
         return
 
+    dummy_strategy = get_strategy(
+        name=strategy_name, symbols=[],
+        params=settings.strategy_params.get(strategy_name, {}),
+    )
+    resolved_symbols = await _resolve_symbols(
+        symbols, settings, dummy_strategy,
+        proxy or settings.exchange.proxy, market,
+    )
+
     strategy_params = settings.strategy_params.get(strategy_name, {})
-    strategy = get_strategy(name=strategy_name, symbols=symbols, params=strategy_params)
+    strategy = get_strategy(name=strategy_name, symbols=resolved_symbols, params=strategy_params)
     store = ParquetStore(base_dir=settings.data.parquet_dir)
 
     exchange = BinanceExchange(
@@ -279,7 +365,7 @@ async def _live(
     )
 
     ws_client = BinanceWebSocket(
-        symbols=symbols,
+        symbols=resolved_symbols,
         timeframes=timeframes,
         market_type=market,
         proxy=proxy or settings.exchange.proxy,
@@ -303,7 +389,7 @@ async def _live(
         initial_capital=Decimal(capital),
     )
 
-    console.print(f"[bold red]LIVE trading: {strategy_name} on {symbols}[/bold red]")
+    console.print(f"[bold red]LIVE trading: {strategy_name} on {resolved_symbols}[/bold red]")
     console.print(f"Market: {market}, Leverage: {leverage}x")
     if settings.exchange.testnet:
         console.print("[yellow]Running on TESTNET[/yellow]")
@@ -319,8 +405,8 @@ async def _live(
 @app.command()
 def live(
     strategy: str = typer.Option(..., "--strategy", help="Strategy name"),
-    symbols: list[str] = typer.Option(
-        ..., "--symbols", "-s", help="Trading pairs, comma-separated"
+    symbols: list[str] | None = typer.Option(
+        None, "--symbols", "-s", help="Trading pairs, comma-separated. Auto-screened if omitted."
     ),
     timeframes: list[str] = typer.Option(["1h"], "--timeframes", "-t", help="Candle timeframes"),
     capital: str = typer.Option("10000", "--capital", help="Initial capital in USDT"),
@@ -355,7 +441,9 @@ def ui(
         "streamlit", "run", str(app_path),
         "--server.port", str(port),
         "--server.address", host,
-        "--theme.dark", "true",
+        "--server.headless", "true",
+        "--browser.gatherUsageStats", "false",
+        "--theme.base", "dark",
     ])
 
 

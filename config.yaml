@@ -3,7 +3,7 @@ market_type: futures  # spot or futures
 exchange:
   binance:
     testnet: false
-    proxy: ""  # e.g. http://127.0.0.1:7890
+    proxy: "http://127.0.0.1:7897"  # e.g. http://127.0.0.1:7890
 
 trading:
   symbols:
@@ -25,6 +25,12 @@ strategy_params:
     period: 14
     oversold: 30
     overbought: 70
+
+screener:
+  enabled: true
+  min_volume_usdt: 10_000_000  # Min 24h volume in USDT
+  quote_currency: USDT
+  max_symbols: 20              # Max symbols to trade
 
 risk:
   max_drawdown_pct: 0.2       # 20% max drawdown before halt
