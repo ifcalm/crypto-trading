@@ -562,5 +562,157 @@ def ui(
     )
 
 
+async def _funding_arb(
+    symbol: str,
+    notional: str,
+    min_rate: str,
+    exit_rate: str,
+    check_interval: int,
+    leverage: int,
+    proxy: str | None,
+    config_path: str | None,
+) -> None:
+    settings = load_settings(config_path)
+    from crypto_trading.strategies.funding_rate_arb import FundingRateArbitrage
+
+    spot_ex = BinanceExchange(
+        api_key=settings.exchange.api_key,
+        secret_key=settings.exchange.secret_key,
+        market_type="spot",
+        testnet=settings.exchange.testnet,
+        proxy=proxy or settings.exchange.proxy,
+    )
+    futures_ex = BinanceExchange(
+        api_key=settings.exchange.api_key,
+        secret_key=settings.exchange.secret_key,
+        market_type=settings.market_type,
+        testnet=settings.exchange.testnet,
+        proxy=proxy or settings.exchange.proxy,
+    )
+
+    arb = FundingRateArbitrage(
+        spot_exchange=spot_ex,
+        futures_exchange=futures_ex,
+        symbol=symbol,
+        notional=Decimal(notional),
+        min_funding_rate=Decimal(min_rate),
+        exit_funding_rate=Decimal(exit_rate),
+        check_interval=check_interval,
+        leverage=leverage,
+    )
+
+    console.print(f"[bold]Funding Rate Arb: {symbol}[/bold]")
+    console.print(f"Notional: ${notional}, Min rate: {min_rate}, Exit rate: {exit_rate}")
+    console.print("Press Ctrl+C to stop")
+    console.print()
+
+    try:
+        await arb.run()
+    except asyncio.CancelledError:
+        pass
+    finally:
+        await arb.stop()
+        await spot_ex.close()
+        await futures_ex.close()
+
+
+@app.command()
+def funding_arb(
+    symbol: str = typer.Option("BTC/USDT", "--symbol", "-s", help="Trading pair"),
+    notional: str = typer.Option("1000", "--notional", "-n", help="Position notional in USDT"),
+    min_rate: str = typer.Option("0.0001", "--min-rate", help="Min funding rate to open (0.01%)"),
+    exit_rate: str = typer.Option("0", "--exit-rate", help="Exit when rate ≤ this value"),
+    check_interval: int = typer.Option(300, "--interval", "-i", help="Check interval in seconds"),
+    leverage: int = typer.Option(1, "--leverage", "-l", help="Leverage"),
+    proxy: str | None = typer.Option(None, "--proxy", help="HTTP proxy"),
+    config: str | None = typer.Option(None, "--config", "-c", help="Path to config.yaml"),
+) -> None:
+    """Run delta-neutral funding rate arbitrage."""
+    asyncio.run(
+        _funding_arb(symbol, notional, min_rate, exit_rate, check_interval, leverage, proxy, config)
+    )
+
+
+async def _market_make(
+    symbol: str,
+    quote_size: str,
+    spread_bps: float,
+    max_spread_bps: float,
+    cycle_interval: float,
+    max_pos: int,
+    leverage: int,
+    proxy: str | None,
+    config_path: str | None,
+) -> None:
+    settings = load_settings(config_path)
+
+    exchange = BinanceExchange(
+        api_key=settings.exchange.api_key,
+        secret_key=settings.exchange.secret_key,
+        market_type=settings.market_type,
+        testnet=settings.exchange.testnet,
+        proxy=proxy or settings.exchange.proxy,
+    )
+
+    from crypto_trading.strategies.market_maker import MarketMaker
+
+    mm = MarketMaker(
+        exchange=exchange,
+        symbol=symbol,
+        quote_size=Decimal(quote_size),
+        base_spread_bps=spread_bps,
+        max_spread_bps=max_spread_bps,
+        cycle_interval=cycle_interval,
+        position_limits=(-max_pos, max_pos),
+        leverage=leverage,
+    )
+
+    console.print(f"[bold]Market Making: {symbol}[/bold]")
+    console.print(
+        f"Quote: {quote_size}, Spread: {spread_bps}bps, "
+        f"Max pos: ±{max_pos}, Cycle: {cycle_interval}s"
+    )
+    console.print("Press Ctrl+C to stop")
+    console.print()
+
+    try:
+        await mm.run()
+    except asyncio.CancelledError:
+        pass
+    finally:
+        await mm.stop()
+        await exchange.close()
+
+
+@app.command()
+def market_make(
+    symbol: str = typer.Option("BTC/USDT", "--symbol", "-s", help="Trading pair"),
+    quote_size: str = typer.Option("0.001", "--size", help="Quote size per order"),
+    spread_bps: float = typer.Option(5.0, "--spread", help="Half-spread in basis points (0.05%)"),
+    max_spread_bps: float = typer.Option(
+        50.0, "--max-spread", help="Max half-spread when inventory skewed"
+    ),
+    cycle_interval: float = typer.Option(2.0, "--cycle", help="Order refresh interval in seconds"),
+    max_pos: int = typer.Option(5, "--max-pos", help="Max net position (±) before pausing"),
+    leverage: int = typer.Option(1, "--leverage", "-l", help="Leverage"),
+    proxy: str | None = typer.Option(None, "--proxy", help="HTTP proxy"),
+    config: str | None = typer.Option(None, "--config", "-c", help="Path to config.yaml"),
+) -> None:
+    """Run a simple inventory-aware market maker."""
+    asyncio.run(
+        _market_make(
+            symbol,
+            quote_size,
+            spread_bps,
+            max_spread_bps,
+            cycle_interval,
+            max_pos,
+            leverage,
+            proxy,
+            config,
+        )
+    )
+
+
 if __name__ == "__main__":
     app()
