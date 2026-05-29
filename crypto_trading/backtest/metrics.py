@@ -119,9 +119,7 @@ def calculate_profit_factor(trades: list) -> float:
     return gross_profit / gross_loss
 
 
-def calculate_all(
-    result: BacktestResult, risk_free_rate: float = 0.02
-) -> dict:
+def calculate_all(result: BacktestResult, risk_free_rate: float = 0.02) -> dict:
     max_dd, dd_start, dd_end = calculate_max_drawdown(result.equity_curve)
 
     return {

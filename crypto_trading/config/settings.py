@@ -14,6 +14,15 @@ class ExchangeConfig(BaseSettings):
     proxy: str = ""  # e.g. http://127.0.0.1:7890
 
 
+class HyperliquidConfig(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="HYPERLIQUID_")
+
+    private_key: str = Field(default="", env="HYPERLIQUID_PRIVATE_KEY")
+    wallet_address: str = ""
+    testnet: bool = False
+    vault_address: str = ""
+
+
 class TradingConfig(BaseSettings):
     symbols: list[str] = ["BTC/USDT"]
     timeframes: list[str] = ["1h"]
@@ -49,6 +58,7 @@ class Settings(BaseSettings):
 
     market_type: str = "futures"
     exchange: ExchangeConfig = Field(default_factory=ExchangeConfig)
+    hyperliquid: HyperliquidConfig = Field(default_factory=HyperliquidConfig)
     trading: TradingConfig = Field(default_factory=TradingConfig)
     data: DataConfig = Field(default_factory=DataConfig)
     risk: RiskConfig = Field(default_factory=RiskConfig)
@@ -73,6 +83,7 @@ class Settings(BaseSettings):
         return cls(
             market_type=data.pop("market_type", "futures"),
             exchange=ExchangeConfig(**exchange_data.get("binance", {})),
+            hyperliquid=HyperliquidConfig(**exchange_data.get("hyperliquid", {})),
             trading=TradingConfig(**trading_data),
             data=DataConfig(**data_data),
             risk=RiskConfig(**risk_data),

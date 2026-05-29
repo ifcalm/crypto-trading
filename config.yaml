@@ -4,6 +4,9 @@ exchange:
   binance:
     testnet: false
     proxy: "http://127.0.0.1:7897"  # e.g. http://127.0.0.1:7890
+  hyperliquid:
+    testnet: false
+    vault_address: ""  # optional, for vault trading
 
 trading:
   symbols:
@@ -25,6 +28,13 @@ strategy_params:
     period: 14
     oversold: 30
     overbought: 70
+  llm_orderbook:
+    strategic_tf: 15m
+    tactical_tf: 5m
+    base_amount: 0.01
+    direction_ttl_minutes: 15
+    model: deepseek-v4-pro
+    max_daily_calls: 200
 
 screener:
   enabled: true

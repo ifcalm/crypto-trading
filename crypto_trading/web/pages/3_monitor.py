@@ -73,18 +73,23 @@ with left:
         df_eq = pd.DataFrame(equity_history)
         df_eq["time"] = pd.to_datetime(df_eq["time"])
         fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=df_eq["time"], y=df_eq["equity"],
-            mode="lines", name="Equity",
-            line=dict(color="#00ff88", width=2),
-            fill="tozeroy", fillcolor="rgba(0,255,136,0.1)",
-        ))
+        fig.add_trace(
+            go.Scatter(
+                x=df_eq["time"],
+                y=df_eq["equity"],
+                mode="lines",
+                name="Equity",
+                line=dict(color="#00ff88", width=2),
+                fill="tozeroy",
+                fillcolor="rgba(0,255,136,0.1)",
+            )
+        )
         initial = status.get("initial_capital", 0)
         if initial:
-            fig.add_hline(y=initial, line_dash="dash",
-                          line_color="gray", annotation_text="Initial")
+            fig.add_hline(y=initial, line_dash="dash", line_color="gray", annotation_text="Initial")
         fig.update_layout(
-            height=350, margin=dict(l=0, r=0, t=0, b=0),
+            height=350,
+            margin=dict(l=0, r=0, t=0, b=0),
             template="plotly_dark",
         )
         st.plotly_chart(fig, use_container_width=True)
@@ -95,14 +100,19 @@ with right:
     st.subheader("Open Positions")
     positions = status.get("positions", [])
     if positions:
-        rows = [{
-            "Symbol": p["symbol"], "Side": p["side"].upper(),
-            "Qty": f"{p['quantity']:.4f}", "Entry": f"${p['entry_price']:.2f}",
-            "Mark": f"${p['mark_price']:.2f}", "PnL": f"${p['unrealized_pnl']:+.2f}",
-            "Lev": f"{p['leverage']}x",
-        } for p in positions]
-        st.dataframe(pd.DataFrame(rows), use_container_width=True,
-                     hide_index=True, height=300)
+        rows = [
+            {
+                "Symbol": p["symbol"],
+                "Side": p["side"].upper(),
+                "Qty": f"{p['quantity']:.4f}",
+                "Entry": f"${p['entry_price']:.2f}",
+                "Mark": f"${p['mark_price']:.2f}",
+                "PnL": f"${p['unrealized_pnl']:+.2f}",
+                "Lev": f"{p['leverage']}x",
+            }
+            for p in positions
+        ]
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True, height=300)
     else:
         st.info("No open positions")
 
@@ -110,13 +120,17 @@ with right:
 st.subheader("Recent Trades")
 trades = status.get("recent_trades", [])
 if trades:
-    rows = [{
-        "Time": t.get("time", "")[:19] if t.get("time") else "",
-        "Symbol": t.get("symbol", ""), "Side": t.get("side", ""),
-        "Qty": f"{t.get('qty', 0):.4f}", "Price": f"${t.get('price', 0):.2f}",
-    } for t in reversed(trades[-30:])]
-    st.dataframe(pd.DataFrame(rows), use_container_width=True,
-                 hide_index=True, height=400)
+    rows = [
+        {
+            "Time": t.get("time", "")[:19] if t.get("time") else "",
+            "Symbol": t.get("symbol", ""),
+            "Side": t.get("side", ""),
+            "Qty": f"{t.get('qty', 0):.4f}",
+            "Price": f"${t.get('price', 0):.2f}",
+        }
+        for t in reversed(trades[-30:])
+    ]
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True, height=400)
 else:
     st.info("No trades yet")
 

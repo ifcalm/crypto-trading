@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from crypto_trading.core.logging import get_logger
 from crypto_trading.core.types import (
     Order,
     OrderSide,
@@ -10,6 +11,8 @@ from crypto_trading.core.types import (
     Signal,
 )
 from crypto_trading.execution.broker import Broker
+
+log = get_logger(__name__)
 
 
 class PaperBroker(Broker):
@@ -34,6 +37,7 @@ class PaperBroker(Broker):
     async def execute_signal(self, signal: Signal, portfolio: Portfolio) -> Order | None:
         fill_price = signal.price or Decimal("0")
         if fill_price == 0 or signal.amount <= 0:
+            log.debug("signal.skipped", symbol=signal.symbol, reason="no price or zero amount")
             return None
 
         if signal.side == OrderSide.BUY:

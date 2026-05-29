@@ -24,6 +24,25 @@ def _to_decimal(value, default: str = "0") -> Decimal:
     return Decimal(str(value))
 
 
+_OTYPE_MAP = {
+    "market": OrderType.MARKET,
+    "limit": OrderType.LIMIT,
+    "stop": OrderType.STOP_LOSS,
+    "stop_market": OrderType.STOP_LOSS,
+    "stop_loss": OrderType.STOP_LOSS,
+    "stop_loss_limit": OrderType.STOP_LOSS_LIMIT,
+    "take_profit": OrderType.TAKE_PROFIT,
+    "take_profit_market": OrderType.TAKE_PROFIT,
+    "take_profit_limit": OrderType.TAKE_PROFIT_LIMIT,
+    "trailing_stop_market": OrderType.STOP_LOSS,
+}
+
+
+def _parse_ordertype(raw_type: str) -> OrderType:
+    """Parse ccxt order type string with fallback to MARKET for unknown values."""
+    return _OTYPE_MAP.get(raw_type.lower(), OrderType.MARKET)
+
+
 def _parse_ohlcv(raw: list) -> OHLCV:
     return OHLCV(
         timestamp=datetime.fromtimestamp(raw[0] / 1000, tz=UTC).replace(tzinfo=None),
@@ -42,9 +61,7 @@ def _parse_ticker(raw: dict) -> Ticker:
         ask=_to_decimal(raw.get("ask")),
         last=_to_decimal(raw.get("last")),
         volume=_to_decimal(raw.get("baseVolume") or raw.get("volume")),
-        timestamp=datetime.fromtimestamp(raw["timestamp"] / 1000, tz=UTC).replace(
-            tzinfo=None
-        ),
+        timestamp=datetime.fromtimestamp(raw["timestamp"] / 1000, tz=UTC).replace(tzinfo=None),
     )
 
 
@@ -54,7 +71,7 @@ def _parse_order(raw: dict) -> Order:
         exchange_id=raw.get("id"),
         symbol=raw["symbol"],
         side=OrderSide.BUY if raw["side"] == "buy" else OrderSide.SELL,
-        type=OrderType(raw.get("type", "market")),
+        type=_parse_ordertype(raw.get("type", "")),
         price=_to_decimal(raw.get("price")) if raw.get("price") else None,
         stop_price=_to_decimal(raw.get("stopPrice")) if raw.get("stopPrice") else None,
         amount=_to_decimal(raw.get("amount")),
@@ -64,9 +81,7 @@ def _parse_order(raw: dict) -> Order:
         cost=_to_decimal(raw.get("cost")),
         fee=raw.get("fee"),
         reduce_only=raw.get("reduceOnly", False),
-        timestamp=datetime.fromtimestamp(raw["timestamp"] / 1000, tz=UTC).replace(
-            tzinfo=None
-        ),
+        timestamp=datetime.fromtimestamp(raw["timestamp"] / 1000, tz=UTC).replace(tzinfo=None),
         last_update=datetime.now(UTC).replace(tzinfo=None),
     )
 
@@ -121,13 +136,15 @@ class BinanceExchange(Exchange):
 
         if proxy:
             parsed = proxy.rstrip("/")
-            config.update({
-                "proxies": {
-                    "http": parsed,
-                    "https": parsed,
-                },
-                "aiohttp_proxy": parsed,
-            })
+            config.update(
+                {
+                    "proxies": {
+                        "http": parsed,
+                        "https": parsed,
+                    },
+                    "aiohttp_proxy": parsed,
+                }
+            )
 
         self._client: ccxt_async.Exchange = getattr(ccxt_async, exchange_id)(config)
 
@@ -189,20 +206,28 @@ class BinanceExchange(Exchange):
         try:
             raw = await self._client.fetch_balance()
             balances: dict[str, Balance] = {}
-            raw_info = raw.get("info", {})
-            info_dict = raw_info if isinstance(raw_info, dict) else raw.get("free", {})
-            for asset, info in info_dict.items():
-                if isinstance(info, dict):
-                    total = _to_decimal(info.get("total") or info.get("free", 0))
-                    free = _to_decimal(info.get("free", 0))
-                    used = _to_decimal(info.get("used", 0))
-                    if total > 0 or free > 0:
-                        balances[asset] = Balance(asset=asset, total=total, free=free, used=used)
+
+            free_dict = raw.get("free", {})
+            total_dict = raw.get("total", {})
+            used_dict = raw.get("used", {})
+            # Futures: raw["info"] is a list of position dicts, not a balance dict
+            info = raw.get("info", {})
+            if isinstance(info, dict) and "balances" in info:
+                for entry in info["balances"]:
+                    asset = entry.get("asset", "")
+                    free = _to_decimal(entry.get("free", 0))
+                    locked = _to_decimal(entry.get("locked", 0))
+                    if free > 0 or locked > 0:
+                        balances[asset] = Balance(
+                            asset=asset, total=free + locked, free=free, used=locked
+                        )
+
+            # Spot: use ccxt's parsed free/total/used dicts
             if not balances:
-                for asset in raw.get("free", {}):
-                    total = _to_decimal(raw["total"].get(asset, 0))
-                    free = _to_decimal(raw["free"].get(asset, 0))
-                    used = _to_decimal(raw["used"].get(asset, 0))
+                for asset in free_dict:
+                    total = _to_decimal(total_dict.get(asset, 0))
+                    free = _to_decimal(free_dict.get(asset, 0))
+                    used = _to_decimal(used_dict.get(asset, 0))
                     if total > 0 or free > 0:
                         balances[asset] = Balance(asset=asset, total=total, free=free, used=used)
             return balances

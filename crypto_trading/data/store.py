@@ -22,17 +22,19 @@ class ParquetStore:
         if not bars:
             return 0
 
-        new_df = pd.DataFrame([
-            {
-                "timestamp": b.timestamp,
-                "open": float(b.open),
-                "high": float(b.high),
-                "low": float(b.low),
-                "close": float(b.close),
-                "volume": float(b.volume),
-            }
-            for b in bars
-        ])
+        new_df = pd.DataFrame(
+            [
+                {
+                    "timestamp": b.timestamp,
+                    "open": float(b.open),
+                    "high": float(b.high),
+                    "low": float(b.low),
+                    "close": float(b.close),
+                    "volume": float(b.volume),
+                }
+                for b in bars
+            ]
+        )
         new_df["timestamp"] = pd.to_datetime(new_df["timestamp"])
 
         path = self._get_path(symbol, timeframe)

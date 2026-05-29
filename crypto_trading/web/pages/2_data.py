@@ -22,8 +22,7 @@ with st.sidebar:
     st.header("Download Data")
 
     symbol = st.text_input("Symbol", "BTC/USDT")
-    timeframe = st.selectbox("Timeframe", ["1m", "5m", "15m", "1h", "4h", "1d"],
-                             index=3)
+    timeframe = st.selectbox("Timeframe", ["1m", "5m", "15m", "1h", "4h", "1d"], index=3)
 
     date_range = st.date_input(
         "Date Range",
@@ -31,8 +30,7 @@ with st.sidebar:
         max_value=pd.Timestamp.now(),
     )
 
-    proxy = st.text_input("Proxy", settings.exchange.proxy,
-                          placeholder="http://127.0.0.1:7890")
+    proxy = st.text_input("Proxy", settings.exchange.proxy, placeholder="http://127.0.0.1:7890")
 
     st.divider()
 
@@ -51,13 +49,15 @@ with tab1:
         for tf in settings.trading.timeframes:
             dr = store.get_date_range(sym, tf)
             if dr:
-                data_info.append({
-                    "Symbol": sym,
-                    "Timeframe": tf,
-                    "Start": dr[0].strftime("%Y-%m-%d %H:%M"),
-                    "End": dr[1].strftime("%Y-%m-%d %H:%M"),
-                    "Days": f"{(dr[1] - dr[0]).days:,}",
-                })
+                data_info.append(
+                    {
+                        "Symbol": sym,
+                        "Timeframe": tf,
+                        "Start": dr[0].strftime("%Y-%m-%d %H:%M"),
+                        "End": dr[1].strftime("%Y-%m-%d %H:%M"),
+                        "Days": f"{(dr[1] - dr[0]).days:,}",
+                    }
+                )
 
     if data_info:
         df_meta = pd.DataFrame(data_info)
@@ -72,33 +72,45 @@ with tab2:
     preview_end = pd.Timestamp.now()
 
     bars = store.read_ohlcv(
-        symbol, timeframe,
+        symbol,
+        timeframe,
         start=preview_start.to_pydatetime(),
         end=preview_end.to_pydatetime(),
     )
 
     if bars:
-        df = pd.DataFrame([{
-            "timestamp": b.timestamp,
-            "open": float(b.open),
-            "high": float(b.high),
-            "low": float(b.low),
-            "close": float(b.close),
-            "volume": float(b.volume),
-        } for b in bars])
+        df = pd.DataFrame(
+            [
+                {
+                    "timestamp": b.timestamp,
+                    "open": float(b.open),
+                    "high": float(b.high),
+                    "low": float(b.low),
+                    "close": float(b.close),
+                    "volume": float(b.volume),
+                }
+                for b in bars
+            ]
+        )
 
         fig = go.Figure()
-        fig.add_trace(go.Candlestick(
-            x=df["timestamp"],
-            open=df["open"], high=df["high"],
-            low=df["low"], close=df["close"],
-            name=symbol,
-            increasing_line_color="#00ff88",
-            decreasing_line_color="#ff4444",
-        ))
+        fig.add_trace(
+            go.Candlestick(
+                x=df["timestamp"],
+                open=df["open"],
+                high=df["high"],
+                low=df["low"],
+                close=df["close"],
+                name=symbol,
+                increasing_line_color="#00ff88",
+                decreasing_line_color="#ff4444",
+            )
+        )
         fig.update_layout(
-            height=500, margin=dict(l=0, r=0, t=0, b=0),
-            xaxis_title=None, yaxis_title="Price",
+            height=500,
+            margin=dict(l=0, r=0, t=0, b=0),
+            xaxis_title=None,
+            yaxis_title="Price",
             template="plotly_dark",
             xaxis_rangeslider_visible=False,
         )
@@ -124,8 +136,10 @@ if fetch_btn:
 
         async def download():
             count = await fetcher.fetch_and_store(
-                symbol=symbol, timeframe=timeframe,
-                since=since, until=until,
+                symbol=symbol,
+                timeframe=timeframe,
+                since=since,
+                until=until,
             )
             return count
 

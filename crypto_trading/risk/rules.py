@@ -73,9 +73,7 @@ class MaxOpenPositionsRule(RiskRule):
         current_count = len(portfolio.positions)
         if signal.symbol not in portfolio.positions:
             if current_count >= self.max_positions:
-                raise RiskRuleViolation(
-                    f"Max open positions ({self.max_positions}) reached"
-                )
+                raise RiskRuleViolation(f"Max open positions ({self.max_positions}) reached")
         return signal
 
 
@@ -92,8 +90,7 @@ class MinConfidenceRule(RiskRule):
     def check(self, signal: Signal, portfolio: Portfolio) -> Signal:
         if signal.confidence < self.min_confidence:
             raise RiskRuleViolation(
-                f"Signal confidence {signal.confidence:.2f} below "
-                f"minimum {self.min_confidence:.2f}"
+                f"Signal confidence {signal.confidence:.2f} below minimum {self.min_confidence:.2f}"
             )
         return signal
 
@@ -110,7 +107,5 @@ class MaxLeverageRule(RiskRule):
 
     def check(self, signal: Signal, portfolio: Portfolio) -> Signal:
         if signal.leverage > self.max_leverage:
-            raise RiskRuleViolation(
-                f"Leverage {signal.leverage}x exceeds max {self.max_leverage}x"
-            )
+            raise RiskRuleViolation(f"Leverage {signal.leverage}x exceeds max {self.max_leverage}x")
         return signal

@@ -36,10 +36,18 @@ class StreamBuilder:
         candle_start = self._align_timestamp(timestamp)
 
         if buf["start"] != candle_start and buf["bar"] is not None:
-            last_bar = buf["bar"]
-            last_bar.close = last_bar.close
-            del self._buffers[symbol]
-            return last_bar
+            completed = buf["bar"]
+            # Seed the new bar with this tick's data
+            buf["bar"] = OHLCV(
+                timestamp=candle_start,
+                open=price,
+                high=price,
+                low=price,
+                close=price,
+                volume=volume,
+            )
+            buf["start"] = candle_start
+            return completed
 
         if buf["bar"] is None:
             buf["bar"] = OHLCV(
