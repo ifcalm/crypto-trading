@@ -35,6 +35,17 @@ strategy_params:
     direction_ttl_minutes: 15
     model: deepseek-v4-pro
     max_daily_calls: 200
+  funding_rate_arb:
+    notional: 1000
+    min_funding_rate: 0.0001
+    exit_funding_rate: 0
+    check_interval: 300
+  market_maker:
+    quote_size: 0.001
+    base_spread_bps: 5.0
+    max_spread_bps: 50.0
+    cycle_interval: 2.0
+    max_positions: 5
 
 screener:
   enabled: true
