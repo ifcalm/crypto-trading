@@ -1,6 +1,5 @@
 """Crypto Trading — Streamlit UI."""
 
-
 import pandas as pd
 import streamlit as st
 
@@ -34,13 +33,15 @@ for sym in settings.trading.symbols:
     for tf in settings.trading.timeframes:
         dr = store.get_date_range(sym, tf)
         if dr:
-            table_data.append({
-                "Symbol": sym,
-                "Timeframe": tf,
-                "Start": dr[0].strftime("%Y-%m-%d"),
-                "End": dr[1].strftime("%Y-%m-%d"),
-                "Days": (dr[1] - dr[0]).days,
-            })
+            table_data.append(
+                {
+                    "Symbol": sym,
+                    "Timeframe": tf,
+                    "Start": dr[0].strftime("%Y-%m-%d"),
+                    "End": dr[1].strftime("%Y-%m-%d"),
+                    "Days": (dr[1] - dr[0]).days,
+                }
+            )
 
 if table_data:
     df = pd.DataFrame(table_data)

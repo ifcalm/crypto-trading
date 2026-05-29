@@ -52,6 +52,8 @@ class BacktestEngine:
         leverage: int = 1,
         funding_rate: Decimal = Decimal("0.0001"),
         risk_manager: RiskManager | None = None,
+        save_to_db: bool = False,
+        db_url: str = "",
     ):
         self.strategy = strategy
         self.store = store
@@ -63,11 +65,16 @@ class BacktestEngine:
         self.leverage = leverage
         self.funding_rate = funding_rate
         self.risk_manager = risk_manager
+        self.save_to_db = save_to_db
+        self.db_url = db_url
+        self._strategy_name = type(strategy).__name__
         self._portfolio: Portfolio | None = None
         self._trades: list[Trade] = []
         self._equity_curve: list[tuple[datetime, Decimal]] = []
         self._open_trades: dict[str, Trade] = {}
         self._last_funding_time: datetime | None = None
+        self._db_initialized = False
+        self._pending_db_trades: list[Trade] = []
 
     async def run(
         self,
@@ -85,9 +92,7 @@ class BacktestEngine:
         if not all_bars:
             return BacktestResult(initial_capital=self.initial_capital)
 
-        timestamps = sorted(
-            {b.timestamp for bars in all_bars.values() for b in bars}
-        )
+        timestamps = sorted({b.timestamp for bars in all_bars.values() for b in bars})
 
         self._portfolio = Portfolio(
             total_equity=self.initial_capital,
@@ -98,6 +103,10 @@ class BacktestEngine:
         self._equity_curve = []
         self._open_trades = {}
         self._last_funding_time = None
+        self._pending_db_trades = []
+
+        if self.save_to_db and self.db_url:
+            await self._init_db()
 
         await self.strategy.on_start()
 
@@ -126,6 +135,15 @@ class BacktestEngine:
 
         await self.strategy.on_stop()
 
+        if self.save_to_db and self._pending_db_trades:
+            for trade in self._pending_db_trades:
+                try:
+                    await self._save_trade_to_db(trade)
+                except Exception:
+                    import logging
+
+                    logging.getLogger(__name__).warning("Failed to persist trade", exc_info=True)
+
         return BacktestResult(
             equity_curve=self._equity_curve,
             trades=self._trades,
@@ -133,9 +151,7 @@ class BacktestEngine:
             final_equity=self._portfolio.total_equity,
             total_return=self._portfolio.total_equity - self.initial_capital,
             total_return_pct=(
-                (self._portfolio.total_equity - self.initial_capital)
-                / self.initial_capital
-                * 100
+                (self._portfolio.total_equity - self.initial_capital) / self.initial_capital * 100
             ),
             total_fees=sum((t.fee for t in self._trades), Decimal("0")),
         )
@@ -202,8 +218,7 @@ class BacktestEngine:
             proceeds = existing.quantity * fill_price - fee
             pnl = (fill_price - existing.entry_price) * existing.quantity - fee
             self._portfolio.free_balance += proceeds
-            self._portfolio.total_equity += pnl
-            self._close_trade(signal.symbol, fill_price, ts=signal.timestamp, fee=fee, pnl=pnl)
+            self._close_trade(signal.symbol, fill_price, ts=bar.timestamp, fee=fee, pnl=pnl)
             del self._portfolio.positions[signal.symbol]
 
         elif signal.side == OrderSide.BUY:
@@ -227,7 +242,7 @@ class BacktestEngine:
             self._open_trades[signal.symbol] = Trade(
                 symbol=signal.symbol,
                 side=PositionSide.LONG,
-                entry_time=signal.timestamp,
+                entry_time=bar.timestamp,
                 entry_price=fill_price,
                 quantity=quantity,
                 fee=fee,
@@ -243,13 +258,13 @@ class BacktestEngine:
 
         if signal.reduce_only:
             if existing is not None:
-                self._close_futures_position(signal.symbol, fill_price, signal.timestamp, fee)
+                self._close_futures_position(signal.symbol, fill_price, bar.timestamp, fee)
             return
 
         target_side = PositionSide.LONG if signal.side == OrderSide.BUY else PositionSide.SHORT
 
         if existing is not None and existing.side != target_side:
-            self._close_futures_position(signal.symbol, fill_price, signal.timestamp, fee)
+            self._close_futures_position(signal.symbol, fill_price, bar.timestamp, fee)
             existing = None
 
         if existing is not None and existing.side == target_side:
@@ -273,7 +288,7 @@ class BacktestEngine:
         self._open_trades[signal.symbol] = Trade(
             symbol=signal.symbol,
             side=target_side,
-            entry_time=signal.timestamp,
+            entry_time=bar.timestamp,
             entry_price=fill_price,
             quantity=signal.amount,
             fee=fee,
@@ -293,7 +308,6 @@ class BacktestEngine:
             pnl = (pos.entry_price - price) * pos.quantity - fee
 
         self._portfolio.free_balance += pos.margin + pnl
-        self._portfolio.total_equity += pnl
 
         trade = self._open_trades.pop(symbol, None)
         if trade:
@@ -323,6 +337,8 @@ class BacktestEngine:
             if trade.entry_price > 0:
                 trade.pnl_pct = pnl / (trade.entry_price * trade.quantity) * 100
             self._trades.append(trade)
+            if self.save_to_db:
+                self._pending_db_trades.append(trade)
 
     def _record_equity(self, ts: datetime) -> None:
         if self._portfolio is None:
@@ -336,6 +352,41 @@ class BacktestEngine:
             self._portfolio.current_drawdown = Decimal("0")
         elif self._portfolio.peak_equity > 0:
             self._portfolio.current_drawdown = (
-                (self._portfolio.peak_equity - equity) / self._portfolio.peak_equity
-            )
+                self._portfolio.peak_equity - equity
+            ) / self._portfolio.peak_equity
         self._equity_curve.append((ts, equity))
+
+    async def _init_db(self) -> None:
+        if self._db_initialized:
+            return
+        from crypto_trading.data.database import init_db
+
+        await init_db(self.db_url)
+        self._db_initialized = True
+
+    async def _save_trade_to_db(self, trade: Trade) -> None:
+        try:
+            from crypto_trading.data.repository import save_trade
+
+            await save_trade(
+                trade_id=trade.entry_time.isoformat() + "-" + trade.symbol.replace("/", "_"),
+                strategy=self._strategy_name,
+                symbol=trade.symbol,
+                side=trade.side.value,
+                entry_price=float(trade.entry_price),
+                quantity=float(trade.quantity),
+                entry_time=trade.entry_time,
+                exit_price=float(trade.exit_price) if trade.exit_price else None,
+                exit_time=trade.exit_time,
+                pnl=float(trade.pnl),
+                pnl_pct=float(trade.pnl_pct),
+                fee=float(trade.fee),
+                exchange="backtest",
+                market_type=self.market_type.value,
+                mode="backtest",
+                leverage=self.leverage,
+            )
+        except Exception:
+            import logging
+
+            logging.getLogger(__name__).warning("Failed to persist trade to DB", exc_info=True)

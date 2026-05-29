@@ -63,8 +63,7 @@ class LiveBroker(Broker):
                 symbol=signal.symbol,
                 side=signal.side,
                 order_type=(
-                    signal.order_type if signal.order_type != OrderType.MARKET
-                    else OrderType.MARKET
+                    signal.order_type if signal.order_type != OrderType.MARKET else OrderType.MARKET
                 ),
                 amount=signal.amount,
                 price=signal.price,
@@ -87,8 +86,12 @@ class LiveBroker(Broker):
                 updated = await self.exchange.fetch_order(
                     order.exchange_id or order.id, signal.symbol
                 )
-                if updated.status in (OrderStatus.CLOSED, OrderStatus.CANCELED,
-                                      OrderStatus.REJECTED, OrderStatus.EXPIRED):
+                if updated.status in (
+                    OrderStatus.CLOSED,
+                    OrderStatus.CANCELED,
+                    OrderStatus.REJECTED,
+                    OrderStatus.EXPIRED,
+                ):
                     return updated
             except ExchangeError:
                 continue

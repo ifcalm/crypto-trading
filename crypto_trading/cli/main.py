@@ -1,4 +1,5 @@
 import asyncio
+import os
 import subprocess
 from datetime import datetime
 from decimal import Decimal
@@ -14,9 +15,12 @@ from crypto_trading.data.fetcher import HistoricalDataFetcher
 from crypto_trading.data.store import ParquetStore
 from crypto_trading.exchanges.binance import BinanceExchange
 from crypto_trading.exchanges.binance_ws import BinanceWebSocket
+from crypto_trading.exchanges.binance_ws_depth import DepthWebSocket
+from crypto_trading.exchanges.hyperliquid import HyperliquidExchange
+from crypto_trading.exchanges.hyperliquid_ws import HyperliquidWebSocket
 from crypto_trading.execution.live_broker import LiveBroker
 from crypto_trading.execution.paper_broker import PaperBroker
-from crypto_trading.live.runner import LiveTradingRunner
+from crypto_trading.live.engine import EventDrivenRunner as LiveTradingRunner
 from crypto_trading.risk.manager import RiskManager
 from crypto_trading.risk.rules import (
     MaxDrawdownRule,
@@ -96,7 +100,9 @@ def fetch(
     ),
     since: str | None = typer.Option(None, "--since", help="Start date (ISO format)"),
     until: str | None = typer.Option(None, "--until", help="End date (ISO format)"),
-    proxy: str | None = typer.Option(None, "--proxy", help="HTTP proxy, e.g. http://127.0.0.1:7890"),
+    proxy: str | None = typer.Option(
+        None, "--proxy", help="HTTP proxy, e.g. http://127.0.0.1:7890"
+    ),
     config: str | None = typer.Option(None, "--config", "-c", help="Path to config.yaml"),
 ) -> None:
     """Download historical OHLCV data from the exchange and store it."""
@@ -219,11 +225,13 @@ async def _resolve_symbols(
             SymbolScreener,
         )
 
-        screener = SymbolScreener([
-            QuoteCurrencyFilter(quote=scr.quote_currency),
-            MinVolumeFilter(min_volume_usdt=scr.min_volume_usdt),
-            MaxSymbolsFilter(max_symbols=scr.max_symbols),
-        ])
+        screener = SymbolScreener(
+            [
+                QuoteCurrencyFilter(quote=scr.quote_currency),
+                MinVolumeFilter(min_volume_usdt=scr.min_volume_usdt),
+                MaxSymbolsFilter(max_symbols=scr.max_symbols),
+            ]
+        )
         tickers = [t for t in tickers if t.symbol in screener.apply(tickers)]
         console.print(f"  After screener: {len(tickers)} symbols")
 
@@ -242,6 +250,78 @@ async def _resolve_symbols(
         await exchange.close()
 
 
+def _needs_depth_ws(strategy_name: str) -> bool:
+    """Check if a strategy needs orderbook depth data."""
+    return strategy_name.startswith("llm_orderbook")
+
+
+def _create_exchange_and_ws(
+    exchange_name: str,
+    settings,
+    market: str,
+    proxy: str | None,
+    symbols: list[str],
+    timeframes: list[str],
+) -> dict:
+    """Create exchange, broker, and WebSocket instances for the given exchange."""
+    result: dict = {"exchange": None, "broker": None, "ws_client": None, "depth_ws": None}
+
+    if exchange_name == "binance":
+        exchange = BinanceExchange(
+            api_key=settings.exchange.api_key,
+            secret_key=settings.exchange.secret_key,
+            market_type=market,
+            testnet=settings.exchange.testnet,
+            proxy=proxy or settings.exchange.proxy,
+        )
+        ws_client = BinanceWebSocket(
+            symbols=symbols,
+            timeframes=timeframes,
+            market_type=market,
+            proxy=proxy or settings.exchange.proxy,
+        )
+        result["broker"] = LiveBroker(
+            exchange=exchange,
+            mode="testnet" if settings.exchange.testnet else "live",
+        )
+        result["ws_client"] = ws_client
+        result["exchange"] = exchange
+
+    elif exchange_name == "hyperliquid":
+        if not settings.hyperliquid.private_key and not os.environ.get("HYPERLIQUID_PRIVATE_KEY"):
+            raise ValueError("HYPERLIQUID_PRIVATE_KEY not set")
+
+        exchange = HyperliquidExchange(
+            private_key=settings.hyperliquid.private_key,
+            wallet_address=settings.hyperliquid.wallet_address,
+            market_type=market,
+            testnet=settings.hyperliquid.testnet,
+            vault_address=settings.hyperliquid.vault_address or None,
+        )
+        ws_client = HyperliquidWebSocket(
+            symbols=symbols,
+            timeframes=timeframes,
+            market_type=market,
+            testnet=settings.hyperliquid.testnet,
+        )
+        result["broker"] = LiveBroker(
+            exchange=exchange,
+            mode="testnet" if settings.hyperliquid.testnet else "live",
+        )
+        result["ws_client"] = ws_client
+        result["exchange"] = exchange
+
+    # Depth WS (Binance only for now)
+    if exchange_name == "binance":
+        result["depth_ws"] = DepthWebSocket(
+            symbols=symbols,
+            market_type=market,
+            proxy=proxy or settings.exchange.proxy,
+        )
+
+    return result
+
+
 async def _paper(
     strategy_name: str,
     symbols: list[str] | None,
@@ -251,14 +331,17 @@ async def _paper(
     leverage: int,
     proxy: str | None,
     config_path: str | None,
+    exchange_name: str = "binance",
 ) -> None:
     settings = load_settings(config_path)
     strategy_params = settings.strategy_params.get(strategy_name, {})
 
     resolved_symbols = await _resolve_symbols(
-        symbols, settings,
+        symbols,
+        settings,
         get_strategy(name=strategy_name, symbols=[], params=strategy_params),
-        proxy or settings.exchange.proxy, market,
+        proxy or settings.exchange.proxy,
+        market,
     )
 
     strategy = get_strategy(name=strategy_name, symbols=resolved_symbols, params=strategy_params)
@@ -269,21 +352,27 @@ async def _paper(
         leverage=leverage,
     )
 
-    ws_client = BinanceWebSocket(
-        symbols=resolved_symbols,
-        timeframes=timeframes,
-        market_type=market,
-        proxy=proxy or settings.exchange.proxy,
+    components = _create_exchange_and_ws(
+        exchange_name, settings, market, proxy, resolved_symbols, timeframes
     )
+    ws_client = components["ws_client"]
+    depth_ws = components["depth_ws"] if _needs_depth_ws(strategy_name) else None
+
+    if _needs_depth_ws(strategy_name) and exchange_name != "binance":
+        console.print(
+            "[yellow]Depth data only available on Binance — LLM strategy disabled[/yellow]"
+        )
 
     risk = settings.risk
-    risk_manager = RiskManager([
-        MaxDrawdownRule(max_drawdown_pct=risk.max_drawdown_pct),
-        PositionSizeRule(max_position_pct=risk.max_position_pct),
-        MaxOpenPositionsRule(max_positions=risk.max_open_positions),
-        MinConfidenceRule(min_confidence=risk.min_confidence),
-        MaxLeverageRule(max_leverage=risk.max_leverage),
-    ])
+    risk_manager = RiskManager(
+        [
+            MaxDrawdownRule(max_drawdown_pct=risk.max_drawdown_pct),
+            PositionSizeRule(max_position_pct=risk.max_position_pct),
+            MaxOpenPositionsRule(max_positions=risk.max_open_positions),
+            MinConfidenceRule(min_confidence=risk.min_confidence),
+            MaxLeverageRule(max_leverage=risk.max_leverage),
+        ]
+    )
 
     runner = LiveTradingRunner(
         strategy=strategy,
@@ -292,9 +381,12 @@ async def _paper(
         store=store,
         risk_manager=risk_manager,
         initial_capital=Decimal(capital),
+        depth_ws=depth_ws,
+        db_url=settings.data.database_url,
+        market_type=market,
     )
 
-    msg = f"[bold]Paper trading: {strategy_name} on {resolved_symbols} ({timeframes})[/bold]"
+    msg = f"[bold]Paper trading ({exchange_name}): {strategy_name} on {resolved_symbols}[/bold]"
     console.print(msg)
     console.print(f"Market: {market}, Leverage: {leverage}x, Capital: ${capital}")
     console.print("Press Ctrl+C to stop")
@@ -315,10 +407,13 @@ def paper(
     leverage: int = typer.Option(1, "--leverage", "-l", help="Leverage (futures only)"),
     proxy: str | None = typer.Option(None, "--proxy", help="HTTP proxy"),
     config: str | None = typer.Option(None, "--config", "-c", help="Path to config.yaml"),
+    exchange: str = typer.Option(
+        "binance", "--exchange", "-e", help="Exchange: binance or hyperliquid"
+    ),
 ) -> None:
     """Run paper trading with simulated fills against real-time data."""
     asyncio.run(
-        _paper(strategy, symbols, timeframes, capital, market, leverage, proxy, config)
+        _paper(strategy, symbols, timeframes, capital, market, leverage, proxy, config, exchange)
     )
 
 
@@ -331,54 +426,52 @@ async def _live(
     leverage: int,
     proxy: str | None,
     config_path: str | None,
+    exchange_name: str = "binance",
 ) -> None:
     settings = load_settings(config_path)
 
-    if not settings.exchange.api_key:
-        console.print("[red]API key not configured. Set BINANCE_API_KEY in .env[/red]")
+    if exchange_name == "binance" and not settings.exchange.api_key:
+        console.print("[red]BINANCE_API_KEY not configured in .env[/red]")
         return
 
     dummy_strategy = get_strategy(
-        name=strategy_name, symbols=[],
+        name=strategy_name,
+        symbols=[],
         params=settings.strategy_params.get(strategy_name, {}),
     )
     resolved_symbols = await _resolve_symbols(
-        symbols, settings, dummy_strategy,
-        proxy or settings.exchange.proxy, market,
+        symbols,
+        settings,
+        dummy_strategy,
+        proxy or settings.exchange.proxy,
+        market,
     )
 
     strategy_params = settings.strategy_params.get(strategy_name, {})
     strategy = get_strategy(name=strategy_name, symbols=resolved_symbols, params=strategy_params)
     store = ParquetStore(base_dir=settings.data.parquet_dir)
 
-    exchange = BinanceExchange(
-        api_key=settings.exchange.api_key,
-        secret_key=settings.exchange.secret_key,
-        market_type=market,
-        testnet=settings.exchange.testnet,
-        proxy=proxy or settings.exchange.proxy,
+    components = _create_exchange_and_ws(
+        exchange_name, settings, market, proxy, resolved_symbols, timeframes
     )
+    exchange = components["exchange"]
+    broker = components["broker"]
+    ws_client = components["ws_client"]
+    depth_ws = components["depth_ws"] if _needs_depth_ws(strategy_name) else None
 
-    broker = LiveBroker(
-        exchange=exchange,
-        mode="testnet" if settings.exchange.testnet else "live",
-    )
-
-    ws_client = BinanceWebSocket(
-        symbols=resolved_symbols,
-        timeframes=timeframes,
-        market_type=market,
-        proxy=proxy or settings.exchange.proxy,
-    )
+    if _needs_depth_ws(strategy_name) and exchange_name != "binance":
+        console.print("[yellow]Depth data only available on Binance[/yellow]")
 
     risk = settings.risk
-    risk_manager = RiskManager([
-        MaxDrawdownRule(max_drawdown_pct=risk.max_drawdown_pct),
-        PositionSizeRule(max_position_pct=risk.max_position_pct),
-        MaxOpenPositionsRule(max_positions=risk.max_open_positions),
-        MinConfidenceRule(min_confidence=risk.min_confidence),
-        MaxLeverageRule(max_leverage=risk.max_leverage),
-    ])
+    risk_manager = RiskManager(
+        [
+            MaxDrawdownRule(max_drawdown_pct=risk.max_drawdown_pct),
+            PositionSizeRule(max_position_pct=risk.max_position_pct),
+            MaxOpenPositionsRule(max_positions=risk.max_open_positions),
+            MinConfidenceRule(min_confidence=risk.min_confidence),
+            MaxLeverageRule(max_leverage=risk.max_leverage),
+        ]
+    )
 
     runner = LiveTradingRunner(
         strategy=strategy,
@@ -387,9 +480,19 @@ async def _live(
         store=store,
         risk_manager=risk_manager,
         initial_capital=Decimal(capital),
+        depth_ws=depth_ws,
+        db_url=settings.data.database_url,
+        market_type=market,
     )
 
-    console.print(f"[bold red]LIVE trading: {strategy_name} on {resolved_symbols}[/bold red]")
+    exchange_type = (
+        "TESTNET" if settings.exchange.testnet or settings.hyperliquid.testnet else "LIVE"
+    )
+    info_line = (
+        f"[bold red]{exchange_type} ({exchange_name}): "
+        f"{strategy_name} on {resolved_symbols}[/bold red]"
+    )
+    console.print(info_line)
     console.print(f"Market: {market}, Leverage: {leverage}x")
     if settings.exchange.testnet:
         console.print("[yellow]Running on TESTNET[/yellow]")
@@ -414,10 +517,13 @@ def live(
     leverage: int = typer.Option(1, "--leverage", "-l", help="Leverage (futures only)"),
     proxy: str | None = typer.Option(None, "--proxy", help="HTTP proxy"),
     config: str | None = typer.Option(None, "--config", "-c", help="Path to config.yaml"),
+    exchange: str = typer.Option(
+        "binance", "--exchange", "-e", help="Exchange: binance or hyperliquid"
+    ),
 ) -> None:
     """Run live trading with real orders on the exchange."""
     asyncio.run(
-        _live(strategy, symbols, timeframes, capital, market, leverage, proxy, config)
+        _live(strategy, symbols, timeframes, capital, market, leverage, proxy, config, exchange)
     )
 
 
@@ -437,14 +543,23 @@ def ui(
     """Launch the Streamlit web UI."""
     app_path = Path(__file__).parent.parent / "web" / "app.py"
     console.print(f"[green]Starting Streamlit UI at http://{host}:{port}[/green]")
-    subprocess.run([
-        "streamlit", "run", str(app_path),
-        "--server.port", str(port),
-        "--server.address", host,
-        "--server.headless", "true",
-        "--browser.gatherUsageStats", "false",
-        "--theme.base", "dark",
-    ])
+    subprocess.run(
+        [
+            "streamlit",
+            "run",
+            str(app_path),
+            "--server.port",
+            str(port),
+            "--server.address",
+            host,
+            "--server.headless",
+            "true",
+            "--browser.gatherUsageStats",
+            "false",
+            "--theme.base",
+            "dark",
+        ]
+    )
 
 
 if __name__ == "__main__":

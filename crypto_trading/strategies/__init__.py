@@ -1,10 +1,12 @@
 from crypto_trading.core.strategy import Strategy
+from crypto_trading.strategies.llm_orderbook import LLMOrderbookStrategy
 from crypto_trading.strategies.ma_crossover import MACrossoverStrategy
 from crypto_trading.strategies.rsi_reversal import RSIReversalStrategy
 
 STRATEGY_REGISTRY: dict[str, type[Strategy]] = {
     "ma_crossover": MACrossoverStrategy,
     "rsi_reversal": RSIReversalStrategy,
+    "llm_orderbook": LLMOrderbookStrategy,
 }
 
 

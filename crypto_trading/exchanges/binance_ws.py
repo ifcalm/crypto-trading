@@ -8,8 +8,8 @@ import websockets
 from crypto_trading.core.types import OHLCV
 
 # Binance WebSocket base URLs
-WS_BASE = "wss://fapi.binance.com/ws"       # Futures
-WS_BASE_SPOT = "wss://stream.binance.com:9443/ws"  # Spot
+WS_BASE = "wss://fapi.binance.com"  # Futures
+WS_BASE_SPOT = "wss://stream.binance.com:9443"  # Spot
 
 
 class BinanceWebSocket:
@@ -20,19 +20,19 @@ class BinanceWebSocket:
         market_type: str = "futures",
         proxy: str | None = None,
     ):
-        self.symbols = [self._normalize(s) for s in symbols]
+        self.symbols = symbols
         self.timeframes = timeframes
         self.market_type = market_type
         self._ws_url = WS_BASE_SPOT if market_type == "spot" else WS_BASE
         self._proxy = proxy
-        self._queue: asyncio.Queue[OHLCV] = asyncio.Queue()
+        self._queue: asyncio.Queue[OHLCV] = asyncio.Queue(maxsize=1000)
         self._running = False
         self._ws: websockets.WebSocketClientProtocol | None = None
+        # normalized_name -> original symbol for reverse lookup
+        self._symbol_map: dict[str, str] = {self._normalize(s): s for s in symbols}
 
     @staticmethod
     def _normalize(symbol: str) -> str:
-        # "BTC/USDT" -> "btcusdt"
-        # "TOSHI/USDT:USDT" -> "toshiusdt" (futures with settle suffix)
         s = symbol.lower().replace("/", "")
         if ":" in s:
             s = s.split(":")[0]
@@ -61,10 +61,15 @@ class BinanceWebSocket:
     async def _connect(self) -> None:
         streams = []
         for symbol in self.symbols:
+            norm = self._normalize(symbol)
             for tf in self.timeframes:
-                streams.append(f"{symbol}@kline_{tf}")
+                streams.append(f"{norm}@kline_{tf}")
 
-        url = f"{self._ws_url}/{'/'.join(streams)}"
+        stream_path = "/".join(streams)
+        if len(streams) == 1:
+            url = f"{self._ws_url}/ws/{stream_path}"
+        else:
+            url = f"{self._ws_url}/stream?streams={stream_path}"
 
         kwargs: dict = {}
         if self._proxy:
@@ -87,11 +92,8 @@ class BinanceWebSocket:
         if "e" in data and data["e"] == "kline":
             kline = data["k"]
             if kline["x"]:  # is closed
-                raw_symbol = kline["s"]
-                if raw_symbol.endswith("USDT"):
-                    symbol = f"{raw_symbol[:-4]}/{raw_symbol[-4:]}"
-                else:
-                    symbol = raw_symbol
+                raw_symbol = kline["s"].lower()
+                symbol = self._symbol_map.get(raw_symbol, raw_symbol.upper())
                 bar = OHLCV(
                     timestamp=datetime.fromtimestamp(kline["t"] / 1000, tz=UTC).replace(
                         tzinfo=None
@@ -102,6 +104,7 @@ class BinanceWebSocket:
                     close=Decimal(kline["c"]),
                     volume=Decimal(kline["v"]),
                     symbol=symbol,
+                    metadata={"timeframe": kline.get("i", "")},
                 )
                 await self._queue.put(bar)
 

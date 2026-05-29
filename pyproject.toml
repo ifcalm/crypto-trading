@@ -18,6 +18,8 @@ dependencies = [
     "structlog>=24.1",
     "python-dotenv>=1.0",
     "pyarrow>=17.0",
+    "hyperliquid-python-sdk>=0.30",
+    "eth-account>=0.11",
 ]
 
 [project.scripts]
@@ -60,3 +62,5 @@ addopts = ["-v", "--tb=short"]
 
 [tool.ruff.lint.per-file-ignores]
 "crypto_trading/web/pages/*.py" = ["N999"]
+"crypto_trading/strategies/llm_orderbook.py" = ["E501"]
+"crypto_trading/core/logging.py" = ["E501"]
