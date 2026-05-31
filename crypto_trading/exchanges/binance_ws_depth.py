@@ -14,8 +14,10 @@ Approach:
 
 import asyncio
 import json
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Any
 
 import httpx
 import websockets
@@ -54,14 +56,14 @@ class DepthWebSocket:
         market_type: str = "futures",
         proxy: str | None = None,
         output_interval: float = 1.0,
-    ):
+    ) -> None:
         self.symbols = symbols
         self.levels = min(levels, 20)
         self.market_type = market_type
         self._proxy = proxy
         self.output_interval = output_interval
         # symbol -> {bids: [[price,qty],...], asks: [[price,qty],...], lastUpdateId: int}
-        self._books: dict[str, dict] = {}
+        self._books: dict[str, dict[str, Any]] = {}
         self._running = False
         self._queue: asyncio.Queue[OrderBookSnapshot] = asyncio.Queue(maxsize=1000)
         self._symbol_map: dict[str, str] = {self._normalize(s): s for s in symbols}
@@ -70,7 +72,7 @@ class DepthWebSocket:
     def _normalize(symbol: str) -> str:
         return symbol.lower().replace("/", "").split(":")[0]
 
-    async def stream(self):
+    async def stream(self) -> AsyncIterator[OrderBookSnapshot]:
         """Async generator yielding OrderBookSnapshot at output_interval."""
         self._running = True
         consumer_task = asyncio.create_task(self._connect_and_read())
@@ -104,7 +106,7 @@ class DepthWebSocket:
         else:
             url = f"{base}/stream?streams={stream_path}"
 
-        kwargs: dict = {}
+        kwargs: dict[str, Any] = {}
         if self._proxy:
             kwargs["proxy"] = self._proxy
 
@@ -114,7 +116,7 @@ class DepthWebSocket:
         try:
             while self._running:
                 try:
-                    async with websockets.connect(url, **kwargs) as ws:  # type: ignore[attr-defined]
+                    async with websockets.connect(url, **kwargs) as ws:
                         async for message in ws:
                             await self._handle_depth_message(message)
                 except asyncio.CancelledError:
@@ -196,7 +198,7 @@ class DepthWebSocket:
         book["lastUpdateId"] = final_update_id
 
     @staticmethod
-    def _apply_level(side: list[list], price: Decimal, qty: Decimal) -> None:
+    def _apply_level(side: list[list[Decimal]], price: Decimal, qty: Decimal) -> None:
         """Update or remove a price level. Bids sorted by price desc, asks by price asc."""
         if not side:
             if qty > 0:

@@ -122,8 +122,8 @@ if fetch_btn:
     if len(date_range) != 2:
         st.error("Select a date range")
     else:
-        since = date_range[0].to_pydatetime()
-        until = date_range[1].to_pydatetime()
+        since = pd.Timestamp(date_range[0]).to_pydatetime()
+        until = pd.Timestamp(date_range[1]).to_pydatetime()
 
         exchange = BinanceExchange(
             market_type=settings.market_type,
@@ -134,7 +134,7 @@ if fetch_btn:
         progress = st.progress(0, "Downloading...")
         status = st.empty()
 
-        async def download():
+        async def download() -> int:
             count = await fetcher.fetch_and_store(
                 symbol=symbol,
                 timeframe=timeframe,

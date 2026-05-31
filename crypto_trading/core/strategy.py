@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from collections import defaultdict
+from typing import Any
 
 from crypto_trading.core.types import OHLCV, Signal, Ticker
 
@@ -8,8 +9,8 @@ class Strategy(ABC):
     def __init__(
         self,
         symbols: list[str],
-        params: dict | None = None,
-    ):
+        params: dict[str, Any] | None = None,
+    ) -> None:
         self.symbols = symbols
         self.params = params or {}
         self._bar_history: dict[str, list[OHLCV]] = defaultdict(list)

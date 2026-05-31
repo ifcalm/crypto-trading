@@ -1,3 +1,5 @@
+from typing import Any
+
 from crypto_trading.core.strategy import Strategy
 from crypto_trading.strategies.llm_orderbook import LLMOrderbookStrategy
 from crypto_trading.strategies.ma_crossover import MACrossoverStrategy
@@ -14,7 +16,7 @@ def list_strategies() -> list[str]:
     return list(STRATEGY_REGISTRY.keys())
 
 
-def get_strategy(name: str, symbols: list[str], params: dict) -> Strategy:
+def get_strategy(name: str, symbols: list[str], params: dict[str, Any]) -> Strategy:
     cls = STRATEGY_REGISTRY.get(name)
     if cls is None:
         available = ", ".join(STRATEGY_REGISTRY.keys())

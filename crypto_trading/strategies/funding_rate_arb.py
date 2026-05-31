@@ -66,7 +66,7 @@ class FundingRateArbitrage:
         symbol: str = "BTC/USDT",
         notional: Decimal | None = None,
         min_funding_rate: Decimal = Decimal("0.0001"),  # 0.01% per 8h
-        exit_funding_rate: Decimal = Decimal("0"),       # exit when rate goes to zero
+        exit_funding_rate: Decimal = Decimal("0"),  # exit when rate goes to zero
         check_interval: int = 300,  # seconds, 5 min
         leverage: int = 1,
     ):
@@ -240,9 +240,7 @@ class FundingRateArbitrage:
             funding_collected=float(pos.total_funding_collected),
             fees=float(pos.total_fees_paid),
             net_pnl=float(net_pnl),
-            duration_hours=(
-                datetime.now(UTC).replace(tzinfo=None) - pos.opened_at
-            ).total_seconds()
+            duration_hours=(datetime.now(UTC).replace(tzinfo=None) - pos.opened_at).total_seconds()
             / 3600,
         )
 

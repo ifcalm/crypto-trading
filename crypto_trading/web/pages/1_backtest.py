@@ -64,8 +64,8 @@ if run_btn:
     if len(date_range) != 2:
         st.error("Please select a date range")
     else:
-        start_dt = date_range[0].to_pydatetime()
-        end_dt = date_range[1].to_pydatetime()
+        start_dt = pd.Timestamp(date_range[0]).to_pydatetime()
+        end_dt = pd.Timestamp(date_range[1]).to_pydatetime()
 
         store = ParquetStore(base_dir=settings.data.parquet_dir)
 

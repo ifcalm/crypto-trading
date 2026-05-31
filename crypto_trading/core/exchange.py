@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from crypto_trading.core.types import OHLCV, Balance, Order, OrderSide, OrderType, Position, Ticker
 
@@ -36,7 +37,7 @@ class Exchange(ABC):
     async def fetch_tickers(self, symbols: list[str] | None = None) -> list[Ticker]: ...
 
     @abstractmethod
-    async def fetch_markets(self) -> list[dict]: ...
+    async def fetch_markets(self) -> list[dict[str, Any]]: ...
 
     @abstractmethod
     async def fetch_balance(self) -> dict[str, Balance]: ...
@@ -51,7 +52,7 @@ class Exchange(ABC):
         price: Decimal | None = None,
         stop_price: Decimal | None = None,
         reduce_only: bool = False,
-        params: dict | None = None,
+        params: dict[str, Any] | None = None,
     ) -> Order: ...
 
     @abstractmethod

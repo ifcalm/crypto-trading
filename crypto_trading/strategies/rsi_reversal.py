@@ -7,6 +7,7 @@ Uses the standard Wilder EMA-based RSI with cached avg gain/loss for O(1) per ba
 """
 
 from decimal import Decimal
+from typing import Any
 
 from crypto_trading.core.strategy import Strategy
 from crypto_trading.core.types import OHLCV, OrderSide, OrderType, Signal
@@ -19,7 +20,7 @@ class RSIReversalStrategy(Strategy):
     SELL/SHORT when RSI crosses above overbought level (overbought -> pullback).
     """
 
-    def __init__(self, symbols: list[str], params: dict | None = None):
+    def __init__(self, symbols: list[str], params: dict[str, Any] | None = None) -> None:
         super().__init__(symbols, params)
         # Cached Wilder values: (symbol, period) -> (avg_gain, avg_loss, prev_close)
         self._rsi_cache: dict[tuple[str, int], tuple[float, float, float | None]] = {}

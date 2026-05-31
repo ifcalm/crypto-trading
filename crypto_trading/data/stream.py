@@ -1,15 +1,22 @@
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from crypto_trading.core.types import OHLCV
 
 
+@dataclass
+class _StreamBuffer:
+    start: datetime
+    bar: OHLCV | None = None
+
+
 class StreamBuilder:
     """Aggregates incoming data into OHLCV bars for custom timeframes."""
 
-    def __init__(self, timeframe: str = "1h"):
+    def __init__(self, timeframe: str = "1h") -> None:
         self.timeframe = self._parse_timeframe(timeframe)
-        self._buffers: dict[str, dict] = {}
+        self._buffers: dict[str, _StreamBuffer] = {}
 
     @staticmethod
     def _parse_timeframe(tf: str) -> timedelta:
@@ -30,15 +37,15 @@ class StreamBuilder:
     ) -> OHLCV | None:
         """Add a trade tick. Returns completed bar if a new candle started."""
         if symbol not in self._buffers:
-            self._buffers[symbol] = {"start": timestamp, "bar": None}
+            self._buffers[symbol] = _StreamBuffer(start=timestamp)
 
         buf = self._buffers[symbol]
         candle_start = self._align_timestamp(timestamp)
 
-        if buf["start"] != candle_start and buf["bar"] is not None:
-            completed = buf["bar"]
+        if buf.start != candle_start and buf.bar is not None:
+            completed = buf.bar
             # Seed the new bar with this tick's data
-            buf["bar"] = OHLCV(
+            buf.bar = OHLCV(
                 timestamp=candle_start,
                 open=price,
                 high=price,
@@ -46,11 +53,11 @@ class StreamBuilder:
                 close=price,
                 volume=volume,
             )
-            buf["start"] = candle_start
+            buf.start = candle_start
             return completed
 
-        if buf["bar"] is None:
-            buf["bar"] = OHLCV(
+        if buf.bar is None:
+            buf.bar = OHLCV(
                 timestamp=candle_start,
                 open=price,
                 high=price,
@@ -58,9 +65,9 @@ class StreamBuilder:
                 close=price,
                 volume=volume,
             )
-            buf["start"] = candle_start
+            buf.start = candle_start
         else:
-            bar = buf["bar"]
+            bar = buf.bar
             bar.high = max(bar.high, price)
             bar.low = min(bar.low, price)
             bar.close = price

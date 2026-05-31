@@ -35,7 +35,11 @@ class MaxDrawdownRule(RiskRule):
 
 
 class PositionSizeRule(RiskRule):
-    """Cap position size to a percentage of portfolio equity."""
+    """Cap position size to a percentage of portfolio equity.
+
+    Signals express amount in base units. When price is available, cap by
+    notional value (amount * price); otherwise keep the legacy amount cap.
+    """
 
     def __init__(self, max_position_pct: float):
         self.max_position_pct = max_position_pct
@@ -48,7 +52,11 @@ class PositionSizeRule(RiskRule):
         if portfolio.total_equity <= 0:
             raise RiskRuleViolation("Portfolio equity is zero or negative")
 
-        max_amount = portfolio.total_equity * Decimal(str(self.max_position_pct))
+        max_notional = portfolio.total_equity * Decimal(str(self.max_position_pct))
+        max_amount = max_notional
+
+        if signal.price is not None and signal.price > 0:
+            max_amount = max_notional / signal.price
 
         if signal.amount > max_amount:
             signal.amount = max_amount

@@ -52,10 +52,10 @@ class MarketMaker:
         *,
         symbol: str = "BTC/USDT",
         quote_size: Decimal | None = None,
-        base_spread_bps: float = 5.0,      # 0.05% half-spread from mid
-        max_spread_bps: float = 50.0,       # max half-spread when skewed
+        base_spread_bps: float = 5.0,  # 0.05% half-spread from mid
+        max_spread_bps: float = 50.0,  # max half-spread when skewed
         max_inventory: Decimal | None = None,
-        cycle_interval: float = 2.0,        # seconds between order replacements
+        cycle_interval: float = 2.0,  # seconds between order replacements
         position_limits: tuple[int, int] = (-5, 5),  # (min, max) net position
         leverage: int = 1,
         paper: bool = True,
@@ -135,9 +135,7 @@ class MarketMaker:
 
         # 4. Compute spread (wider when inventory skewed)
         inventory_ratio = (
-            self._net_position / self.max_inventory
-            if self.max_inventory > 0
-            else Decimal("0")
+            self._net_position / self.max_inventory if self.max_inventory > 0 else Decimal("0")
         )
         half_spread = self.base_half_spread + abs(inventory_ratio) * (
             self.max_half_spread - self.base_half_spread

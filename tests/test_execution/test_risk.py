@@ -37,6 +37,7 @@ def _make_signal(
     amount: Decimal = Decimal("0.1"),
     confidence: float = 0.8,
     leverage: int = 1,
+    price: Decimal | None = None,
 ) -> Signal:
     return Signal(
         symbol=symbol,
@@ -44,6 +45,7 @@ def _make_signal(
         amount=amount,
         confidence=confidence,
         leverage=leverage,
+        price=price,
         order_type=OrderType.MARKET,
         timestamp=datetime.now(UTC).replace(tzinfo=None),
     )
@@ -79,6 +81,13 @@ class TestPositionSizeRule:
         signal = _make_signal(amount=Decimal("2000"))
         result = rule.check(signal, portfolio)
         assert result.amount == Decimal("1000")
+
+    def test_caps_amount_by_notional_when_price_available(self):
+        rule = PositionSizeRule(max_position_pct=0.1)
+        portfolio = _make_portfolio(Decimal("10000"))
+        signal = _make_signal(amount=Decimal("0.1"), price=Decimal("50000"))
+        result = rule.check(signal, portfolio)
+        assert result.amount == Decimal("0.02")
 
     def test_rejects_zero_equity(self):
         rule = PositionSizeRule(max_position_pct=0.1)

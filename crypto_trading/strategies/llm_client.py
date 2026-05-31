@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -85,12 +85,12 @@ class LLMClient:
             text = "\n".join(lines)
 
         try:
-            return json.loads(text)
+            return cast(dict[str, Any], json.loads(text))
         except json.JSONDecodeError:
             start = text.find("{")
             end = text.rfind("}")
             if start != -1 and end > start:
-                return json.loads(text[start : end + 1])
+                return cast(dict[str, Any], json.loads(text[start : end + 1]))
             raise
 
     async def close(self) -> None:

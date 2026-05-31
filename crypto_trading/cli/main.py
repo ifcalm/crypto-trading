@@ -4,13 +4,16 @@ import subprocess
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 import typer
 from rich.console import Console
 
 from crypto_trading.backtest.engine import BacktestEngine
 from crypto_trading.backtest.reporter import print_equity_chart, print_result
-from crypto_trading.config.settings import load_settings
+from crypto_trading.config.settings import Settings, load_settings
+from crypto_trading.core.exchange import Exchange
+from crypto_trading.core.strategy import Strategy
 from crypto_trading.data.fetcher import HistoricalDataFetcher
 from crypto_trading.data.store import ParquetStore
 from crypto_trading.exchanges.binance import BinanceExchange
@@ -182,7 +185,7 @@ def _normalize_symbols(raw: list[str] | None) -> list[str] | None:
     """Split comma-separated symbols like ['BTC/USDT,ETH/USDT'] -> ['BTC/USDT', 'ETH/USDT']."""
     if raw is None:
         return None
-    result = []
+    result: list[str] = []
     for s in raw:
         result.extend(part.strip() for part in s.split(",") if part.strip())
     return result or None
@@ -190,8 +193,8 @@ def _normalize_symbols(raw: list[str] | None) -> list[str] | None:
 
 async def _resolve_symbols(
     symbols: list[str] | None,
-    settings,
-    strategy,
+    settings: Settings,
+    strategy: Strategy,
     proxy: str,
     market: str,
 ) -> list[str]:
@@ -257,24 +260,24 @@ def _needs_depth_ws(strategy_name: str) -> bool:
 
 def _create_exchange_and_ws(
     exchange_name: str,
-    settings,
+    settings: Settings,
     market: str,
     proxy: str | None,
     symbols: list[str],
     timeframes: list[str],
-) -> dict:
+) -> dict[str, Any]:
     """Create exchange, broker, and WebSocket instances for the given exchange."""
-    result: dict = {"exchange": None, "broker": None, "ws_client": None, "depth_ws": None}
+    result: dict[str, Any] = {"exchange": None, "broker": None, "ws_client": None, "depth_ws": None}
 
     if exchange_name == "binance":
-        exchange = BinanceExchange(
+        exchange: Exchange = BinanceExchange(
             api_key=settings.exchange.api_key,
             secret_key=settings.exchange.secret_key,
             market_type=market,
             testnet=settings.exchange.testnet,
             proxy=proxy or settings.exchange.proxy,
         )
-        ws_client = BinanceWebSocket(
+        ws_client: Any = BinanceWebSocket(
             symbols=symbols,
             timeframes=timeframes,
             market_type=market,

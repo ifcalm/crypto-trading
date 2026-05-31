@@ -1,10 +1,11 @@
 import math
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 import pandas as pd
 
-from crypto_trading.backtest.engine import BacktestResult
+from crypto_trading.backtest.engine import BacktestResult, Trade
 
 
 def _to_series(equity_curve: list[tuple[datetime, Decimal]]) -> pd.Series:
@@ -101,17 +102,17 @@ def calculate_calmar(
         years = 1.0
 
     annualized_return = (1 + total_ret) ** (1 / years) - 1
-    return annualized_return / (max_dd / 100)
+    return float(annualized_return / (max_dd / 100))
 
 
-def calculate_win_rate(trades: list) -> float:
+def calculate_win_rate(trades: list[Trade]) -> float:
     if not trades:
         return 0.0
     winning = sum(1 for t in trades if float(t.pnl) > 0)
     return winning / len(trades) * 100
 
 
-def calculate_profit_factor(trades: list) -> float:
+def calculate_profit_factor(trades: list[Trade]) -> float:
     gross_profit = sum(float(t.pnl) for t in trades if float(t.pnl) > 0)
     gross_loss = abs(sum(float(t.pnl) for t in trades if float(t.pnl) < 0))
     if gross_loss == 0:
@@ -119,7 +120,7 @@ def calculate_profit_factor(trades: list) -> float:
     return gross_profit / gross_loss
 
 
-def calculate_all(result: BacktestResult, risk_free_rate: float = 0.02) -> dict:
+def calculate_all(result: BacktestResult, risk_free_rate: float = 0.02) -> dict[str, Any]:
     max_dd, dd_start, dd_end = calculate_max_drawdown(result.equity_curve)
 
     return {
