@@ -18,6 +18,7 @@ import signal as sys_signal
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 from crypto_trading.core.events import (
     BarArrived,
@@ -61,7 +62,7 @@ class PipelineHandlers:
         store: ParquetStore,
         db_url: str = "",
         market_type: str = "futures",
-    ):
+    ) -> None:
         self.strategy = strategy
         self.broker = broker
         self.risk_manager = risk_manager
@@ -71,8 +72,8 @@ class PipelineHandlers:
         self.market_type = market_type
         self._strategy_name = type(strategy).__name__
         self._bar_count = 0
-        self._recent_trades: list[dict] = []
-        self._equity_history: list[dict] = []
+        self._recent_trades: list[dict[str, Any]] = []
+        self._equity_history: list[dict[str, Any]] = []
         self._equity_sample_interval = 10
 
     # ─── BarArrived -> SignalGenerated ──────────────────────────────────
@@ -289,6 +290,7 @@ class EventDrivenRunner:
         )
         self._running = False
         self._started_at: datetime | None = None
+        self._db_initialized = False
 
     async def run(self) -> None:
         self._running = True
@@ -305,6 +307,9 @@ class EventDrivenRunner:
                 loop.add_signal_handler(sig, stop_event.set)
             except NotImplementedError:
                 pass
+
+        if self.db_url:
+            await self._init_db()
 
         await self.strategy.on_start()
         self.pipeline.write_status(True, self._started_at, self.initial_capital)
@@ -344,3 +349,11 @@ class EventDrivenRunner:
         if self.depth_ws:
             await self.depth_ws.close()
         await self.broker.close()
+
+    async def _init_db(self) -> None:
+        if self._db_initialized:
+            return
+        from crypto_trading.data.database import init_db
+
+        await init_db(self.db_url)
+        self._db_initialized = True

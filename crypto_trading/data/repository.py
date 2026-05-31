@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from typing import Any
 
 from crypto_trading.core.types import Order
 from crypto_trading.data.database import get_session
@@ -60,7 +61,7 @@ async def save_trade(
     market_type: str = "futures",
     mode: str = "backtest",
     leverage: int = 1,
-    metadata: dict | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> str:
     """Persist a completed trade to the database. Returns the record ID."""
     session = await get_session()

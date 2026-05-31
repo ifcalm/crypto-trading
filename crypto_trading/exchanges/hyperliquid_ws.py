@@ -8,8 +8,10 @@ seamlessly with the LiveTradingRunner.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Any
 
 from hyperliquid.info import Info as HLInfo
 from hyperliquid.utils import constants as hl_constants
@@ -42,7 +44,7 @@ class HyperliquidWebSocket:
         timeframes: list[str],
         market_type: str = "futures",
         testnet: bool = False,
-    ):
+    ) -> None:
         self.symbols = symbols
         self.timeframes = timeframes
         self.market_type = market_type
@@ -52,7 +54,7 @@ class HyperliquidWebSocket:
         self._info: HLInfo | None = None
         self._subscription_ids: list[int] = []
 
-    async def stream(self):
+    async def stream(self) -> AsyncIterator[OHLCV]:
         """Async generator yielding completed OHLCV bars."""
         self._running = True
 
@@ -81,7 +83,7 @@ class HyperliquidWebSocket:
             self._running = False
             await self.close()
 
-    def _on_candle(self, data: dict) -> None:
+    def _on_candle(self, data: dict[str, Any]) -> None:
         """Callback from HL SDK WebSocket subscription."""
         if not self._running:
             return

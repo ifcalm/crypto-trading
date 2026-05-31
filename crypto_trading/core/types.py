@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
 from enum import Enum
+from typing import Any
 from uuid import uuid4
 
 
@@ -51,7 +52,7 @@ class OHLCV:
     close: Decimal
     volume: Decimal
     symbol: str = ""
-    metadata: dict | None = None
+    metadata: dict[str, Any] | None = None
 
 
 @dataclass
@@ -86,12 +87,12 @@ class Order:
     remaining: Decimal = Decimal("0")
     status: OrderStatus = OrderStatus.PENDING
     cost: Decimal = Decimal("0")
-    fee: dict | None = None
+    fee: dict[str, Any] | None = None
     reduce_only: bool = False
     leverage: int = 1
     timestamp: datetime = field(default_factory=_utcnow)
     last_update: datetime = field(default_factory=_utcnow)
-    metadata: dict | None = None
+    metadata: dict[str, Any] | None = None
 
 
 @dataclass
@@ -108,7 +109,7 @@ class Position:
     liquidation_price: Decimal | None = None
     funding_fee: Decimal = Decimal("0")
     timestamp: datetime = field(default_factory=_utcnow)
-    metadata: dict | None = None
+    metadata: dict[str, Any] | None = None
 
 
 @dataclass
@@ -123,7 +124,7 @@ class Signal:
     stop_price: Decimal | None = None
     leverage: int = 1
     timestamp: datetime = field(default_factory=_utcnow)
-    metadata: dict | None = None
+    metadata: dict[str, Any] | None = None
 
 
 @dataclass

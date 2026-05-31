@@ -5,6 +5,7 @@ SELL/SHORT when fast MA crosses below slow MA.
 """
 
 from decimal import Decimal
+from typing import Any
 
 from crypto_trading.core.strategy import Strategy
 from crypto_trading.core.types import OHLCV, OrderSide, OrderType, Signal
@@ -16,7 +17,7 @@ class MACrossoverStrategy(Strategy):
     Uses incremental SMA: O(1) per bar instead of O(period).
     """
 
-    def __init__(self, symbols: list[str], params: dict | None = None):
+    def __init__(self, symbols: list[str], params: dict[str, Any] | None = None) -> None:
         super().__init__(symbols, params)
         self._sma_cache: dict[tuple[str, int], float] = {}  # (symbol, period) -> sum
 

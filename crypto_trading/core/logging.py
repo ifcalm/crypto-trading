@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any, cast
 
 import structlog
 
@@ -14,7 +15,7 @@ def setup_logging(level: str = "INFO", json_output: bool = False) -> None:
         level: Log level (DEBUG, INFO, WARNING, ERROR).
         json_output: If True, output JSON for log aggregation. Default: pretty console.
     """
-    shared_processors = [
+    shared_processors: list[Any] = [
         structlog.stdlib.add_log_level,
         structlog.stdlib.add_logger_name,
         structlog.processors.TimeStamper(fmt="ISO"),
@@ -23,7 +24,7 @@ def setup_logging(level: str = "INFO", json_output: bool = False) -> None:
     ]
 
     if json_output:
-        renderer = structlog.processors.JSONRenderer()
+        renderer: Any = structlog.processors.JSONRenderer()
     else:
         renderer = structlog.dev.ConsoleRenderer(colors=True)
 
@@ -55,4 +56,4 @@ def setup_logging(level: str = "INFO", json_output: bool = False) -> None:
 
 
 def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
-    return structlog.get_logger(name or __name__)
+    return cast(structlog.stdlib.BoundLogger, structlog.get_logger(name or __name__))

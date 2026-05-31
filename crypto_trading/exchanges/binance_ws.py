@@ -1,7 +1,9 @@
 import asyncio
 import json
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Any
 
 import websockets
 
@@ -19,7 +21,7 @@ class BinanceWebSocket:
         timeframes: list[str],
         market_type: str = "futures",
         proxy: str | None = None,
-    ):
+    ) -> None:
         self.symbols = symbols
         self.timeframes = timeframes
         self.market_type = market_type
@@ -27,7 +29,7 @@ class BinanceWebSocket:
         self._proxy = proxy
         self._queue: asyncio.Queue[OHLCV] = asyncio.Queue(maxsize=1000)
         self._running = False
-        self._ws: websockets.WebSocketClientProtocol | None = None
+        self._ws: Any = None
         # normalized_name -> original symbol for reverse lookup
         self._symbol_map: dict[str, str] = {self._normalize(s): s for s in symbols}
 
@@ -38,7 +40,7 @@ class BinanceWebSocket:
             s = s.split(":")[0]
         return s
 
-    async def stream(self):
+    async def stream(self) -> AsyncIterator[OHLCV]:
         """Async generator yielding completed OHLCV bars."""
         self._running = True
         task = asyncio.create_task(self._connect())
@@ -71,13 +73,13 @@ class BinanceWebSocket:
         else:
             url = f"{self._ws_url}/stream?streams={stream_path}"
 
-        kwargs: dict = {}
+        kwargs: dict[str, Any] = {}
         if self._proxy:
             kwargs["proxy"] = self._proxy
 
         while self._running:
             try:
-                async with websockets.connect(url, **kwargs) as ws:  # type: ignore[attr-defined]
+                async with websockets.connect(url, **kwargs) as ws:
                     self._ws = ws
                     async for message in ws:
                         await self._handle_message(message)

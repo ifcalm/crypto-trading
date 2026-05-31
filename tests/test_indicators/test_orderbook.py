@@ -40,9 +40,7 @@ class TestImbalance:
 
 class TestImbalanceTrend:
     def test_flat_trend(self):
-        snapshots = [
-            _make_snapshot(bids=[(100, 5)], asks=[(101, 5)]) for _ in range(10)
-        ]
+        snapshots = [_make_snapshot(bids=[(100, 5)], asks=[(101, 5)]) for _ in range(10)]
         trend = compute_imbalance_trend(snapshots, window=10)
         assert trend is not None
         assert abs(trend) < 1e-6

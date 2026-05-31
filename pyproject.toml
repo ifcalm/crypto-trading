@@ -55,6 +55,18 @@ select = ["E", "F", "I", "N", "W", "UP"]
 [tool.mypy]
 strict = true
 
+[[tool.mypy.overrides]]
+module = [
+    "ccxt.*",
+    "eth_account.*",
+    "hyperliquid.*",
+    "pandas.*",
+    "plotly.*",
+    "streamlit.*",
+    "yaml.*",
+]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

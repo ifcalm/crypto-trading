@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Any, cast
 
 import eth_account
 from hyperliquid.exchange import Exchange as HLExchange
@@ -48,7 +49,7 @@ def _from_hl_symbol(hl_name: str) -> str:
     return f"{hl_name.upper()}/USDT"
 
 
-def _to_decimal(value, default: str = "0") -> Decimal:
+def _to_decimal(value: object | None, default: str = "0") -> Decimal:
     if value is None:
         return Decimal(default)
     return Decimal(str(value))
@@ -73,7 +74,7 @@ def _to_hl_order_type(ot: OrderType) -> HLOrderType:
 # ─── order status mapping ───────────────────────────────────────────────
 
 
-def _parse_order_status(raw: dict) -> OrderStatus:
+def _parse_order_status(raw: dict[str, Any]) -> OrderStatus:
     status = raw.get("status", "")
     # Hyperliquid statuses: "open", "filled", "canceled", "rejected"
     if status == "open":
@@ -107,7 +108,7 @@ class HyperliquidExchange(Exchange):
         market_type: str = "futures",
         testnet: bool = False,
         vault_address: str | None = None,
-    ):
+    ) -> None:
         self._market_type = market_type if market_type in ("futures", "spot") else "futures"
         self._testnet = testnet
 
@@ -126,7 +127,7 @@ class HyperliquidExchange(Exchange):
         )
 
         # Cache asset metadata for quick lookups
-        self._meta_cache: dict | None = None
+        self._meta_cache: dict[str, Any] | None = None
         self._sz_decimals: dict[str, int] = {}
 
     # ─── properties ──────────────────────────────────────────────────
@@ -146,9 +147,9 @@ class HyperliquidExchange(Exchange):
 
     # ─── market data ─────────────────────────────────────────────────
 
-    async def _ensure_meta(self) -> dict:
+    async def _ensure_meta(self) -> dict[str, Any]:
         if self._meta_cache is None:
-            self._meta_cache = self._info.meta()
+            self._meta_cache = cast(dict[str, Any], self._info.meta())
             for asset in self._meta_cache["universe"]:
                 name = asset["name"]
                 self._sz_decimals[name] = int(asset.get("szDecimals", 0))
@@ -247,10 +248,10 @@ class HyperliquidExchange(Exchange):
         except Exception as e:
             raise ExchangeError(f"Failed to fetch tickers: {e}") from e
 
-    async def fetch_markets(self) -> list[dict]:
+    async def fetch_markets(self) -> list[dict[str, Any]]:
         try:
             meta = await self._ensure_meta()
-            result = []
+            result: list[dict[str, Any]] = []
             for asset in meta["universe"]:
                 result.append(
                     {
@@ -293,7 +294,7 @@ class HyperliquidExchange(Exchange):
         price: Decimal | None = None,
         stop_price: Decimal | None = None,
         reduce_only: bool = False,
-        params: dict | None = None,
+        params: dict[str, Any] | None = None,
     ) -> Order:
         try:
             hl_name = _to_hl_symbol(symbol)
@@ -461,7 +462,8 @@ class HyperliquidExchange(Exchange):
         try:
             await self._ensure_meta()
             # Meta includes funding info per asset
-            for asset in self._meta_cache["universe"]:
+            meta = await self._ensure_meta()
+            for asset in meta["universe"]:
                 if asset["name"].upper() == _to_hl_symbol(symbol).upper():
                     return _to_decimal(asset.get("funding", 0))
             return Decimal("0")
@@ -472,7 +474,7 @@ class HyperliquidExchange(Exchange):
 
     def _parse_order_result(
         self,
-        raw: dict,
+        raw: dict[str, Any],
         symbol: str,
         side: OrderSide | None = None,
         order_type: OrderType | None = None,

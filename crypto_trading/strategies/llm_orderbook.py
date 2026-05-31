@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Any
 
 from crypto_trading.core.strategy import Strategy
 from crypto_trading.core.types import OHLCV, OrderBookSnapshot, OrderSide, OrderType, Signal
@@ -84,8 +85,8 @@ class LLMOrderbookStrategy(Strategy):
     def __init__(
         self,
         symbols: list[str],
-        params: dict | None = None,
-    ):
+        params: dict[str, Any] | None = None,
+    ) -> None:
         super().__init__(symbols, params)
         p = params or {}
 
@@ -103,7 +104,7 @@ class LLMOrderbookStrategy(Strategy):
         self._max_ob_history = 30
 
         # Current direction: symbol -> dict
-        self._direction: dict[str, dict] = {}
+        self._direction: dict[str, dict[str, Any]] = {}
 
         # Track LLM call counts per day
         self._call_count = 0
@@ -193,7 +194,7 @@ class LLMOrderbookStrategy(Strategy):
         self,
         symbol: str,
         bar: OHLCV,
-        direction_info: dict,
+        direction_info: dict[str, Any],
     ) -> Signal | None:
         """Decide entry timing based on current microstructure."""
         ob_snapshots = self._ob_history.get(symbol, [])
@@ -250,7 +251,7 @@ class LLMOrderbookStrategy(Strategy):
         """Read timeframe from bar metadata (set by BinanceWebSocket from kline data)."""
         if bar.metadata:
             tf = bar.metadata.get("timeframe")
-            if tf:
+            if isinstance(tf, str) and tf:
                 return tf
         return None
 
@@ -264,7 +265,7 @@ class LLMOrderbookStrategy(Strategy):
             return False
         return True
 
-    def _format_direction_prompt(self, ob_signal: dict, ohlcv_context: str) -> str:
+    def _format_direction_prompt(self, ob_signal: dict[str, Any], ohlcv_context: str) -> str:
         parts = [
             "## Orderbook Analysis",
             f"Symbol: {ob_signal['symbol']}",
@@ -297,7 +298,9 @@ class LLMOrderbookStrategy(Strategy):
         )
         return "\n".join(parts)
 
-    def _format_entry_prompt(self, direction_info: dict, ob_signal: dict) -> str:
+    def _format_entry_prompt(
+        self, direction_info: dict[str, Any], ob_signal: dict[str, Any]
+    ) -> str:
         parts = [
             f"## Strategic Direction: {direction_info['direction']}",
             f"Confidence: {direction_info.get('confidence', 'N/A')}",
@@ -334,7 +337,7 @@ class LLMOrderbookStrategy(Strategy):
         if not bars:
             return "No OHLCV data available"
 
-        lines = []
+        lines: list[str] = []
         for b in bars[-6:]:
             lines.append(
                 f"  {b.timestamp.strftime('%H:%M')} "

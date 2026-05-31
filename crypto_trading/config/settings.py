@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 import yaml
 from pydantic import Field
@@ -17,7 +18,7 @@ class ExchangeConfig(BaseSettings):
 class HyperliquidConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="HYPERLIQUID_")
 
-    private_key: str = Field(default="", env="HYPERLIQUID_PRIVATE_KEY")
+    private_key: str = ""
     wallet_address: str = ""
     testnet: bool = False
     vault_address: str = ""
@@ -63,7 +64,7 @@ class Settings(BaseSettings):
     data: DataConfig = Field(default_factory=DataConfig)
     risk: RiskConfig = Field(default_factory=RiskConfig)
     screener: ScreenerConfig = Field(default_factory=ScreenerConfig)
-    strategy_params: dict = Field(default_factory=dict)
+    strategy_params: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
     @classmethod
     def from_yaml(cls, path: str = "config.yaml") -> "Settings":

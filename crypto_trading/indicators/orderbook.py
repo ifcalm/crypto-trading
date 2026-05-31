@@ -5,8 +5,11 @@ and returns computed values.
 """
 
 from decimal import Decimal
+from typing import Any
 
 from crypto_trading.core.types import OrderBookSnapshot
+
+OrderWall = tuple[float, float]
 
 
 def compute_imbalance(snapshot: OrderBookSnapshot) -> float:
@@ -70,13 +73,13 @@ def compute_depth_imbalance_at_level(
 def detect_order_walls(
     snapshot: OrderBookSnapshot,
     threshold_pct: float = 0.05,
-) -> dict:
+) -> dict[str, OrderWall | None]:
     """Detect large quote walls.
 
     A "wall" is a single price level with quantity > threshold_pct * total side volume.
     Returns dict with "bid_wall" and "ask_wall" — each is (price, quantity) or None.
     """
-    result: dict = {"bid_wall": None, "ask_wall": None}
+    result: dict[str, OrderWall | None] = {"bid_wall": None, "ask_wall": None}
 
     total_bid = float(snapshot.bid_volume)
     for level in snapshot.bids:
@@ -96,7 +99,7 @@ def detect_order_walls(
 def compute_orderbook_signal(
     current: OrderBookSnapshot,
     history: list[OrderBookSnapshot],
-) -> dict:
+) -> dict[str, Any]:
     """Compute a comprehensive signal dict from orderbook state.
 
     Designed to be serialized into an LLM prompt context.
@@ -111,6 +114,8 @@ def compute_orderbook_signal(
 
     # Walls
     walls = detect_order_walls(current)
+    bid_wall = walls["bid_wall"]
+    ask_wall = walls["ask_wall"]
 
     # Best bid/ask
     best_bid = float(current.best_bid)
@@ -132,14 +137,10 @@ def compute_orderbook_signal(
         "imbalance_trend": round(imb_trend, 6) if imb_trend is not None else None,
         "near_touch_imbalance": round(near_imb, 4),
         "bid_wall": (
-            {"price": round(walls["bid_wall"][0], 2), "qty": round(walls["bid_wall"][1], 4)}
-            if walls["bid_wall"]
-            else None
+            {"price": round(bid_wall[0], 2), "qty": round(bid_wall[1], 4)} if bid_wall else None
         ),
         "ask_wall": (
-            {"price": round(walls["ask_wall"][0], 2), "qty": round(walls["ask_wall"][1], 4)}
-            if walls["ask_wall"]
-            else None
+            {"price": round(ask_wall[0], 2), "qty": round(ask_wall[1], 4)} if ask_wall else None
         ),
         "top5_bid_qty": round(top5_bids, 4),
         "top5_ask_qty": round(top5_asks, 4),

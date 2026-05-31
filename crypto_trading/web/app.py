@@ -53,7 +53,7 @@ else:
 st.subheader("Strategies")
 
 strategy_names = list_strategies()
-cols = st.columns(len(strategy_names)) if strategy_names else [st]
+cols = st.columns(max(1, len(strategy_names)))
 for i, name in enumerate(strategy_names):
     with cols[i]:
         with st.container(border=True):

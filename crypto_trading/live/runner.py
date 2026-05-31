@@ -4,10 +4,11 @@ import signal as sys_signal
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 from crypto_trading.core.logging import get_logger
 from crypto_trading.core.strategy import Strategy
-from crypto_trading.core.types import OHLCV, Order, OrderBookSnapshot, OrderType, Portfolio
+from crypto_trading.core.types import OHLCV, Order, OrderBookSnapshot, OrderType, Portfolio, Signal
 from crypto_trading.data.store import ParquetStore
 from crypto_trading.exchanges.binance_ws import BinanceWebSocket
 from crypto_trading.exchanges.binance_ws_depth import DepthWebSocket
@@ -33,7 +34,7 @@ class LiveTradingRunner:
         depth_ws: DepthWebSocket | None = None,
         db_url: str = "",
         market_type: str = "futures",
-    ):
+    ) -> None:
         self.strategy = strategy
         self.broker = broker
         self.ws = ws_client
@@ -53,8 +54,8 @@ class LiveTradingRunner:
         self._bar_count = 0
         self._started_at: datetime | None = None
         self._running = False
-        self._recent_trades: list[dict] = []
-        self._equity_history: list[dict] = []
+        self._recent_trades: list[dict[str, Any]] = []
+        self._equity_history: list[dict[str, Any]] = []
         self._equity_sample_interval = 10
 
     @property
@@ -166,7 +167,7 @@ class LiveTradingRunner:
         if callable(on_ob):
             on_ob(snapshot)
 
-    def _record_trade(self, signal, bar: OHLCV) -> None:
+    def _record_trade(self, signal: Signal, bar: OHLCV) -> None:
         entry = {
             "time": bar.timestamp.isoformat(),
             "symbol": signal.symbol,

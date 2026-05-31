@@ -7,6 +7,7 @@ from crypto_trading.core.types import (
     OHLCV,
     MarketType,
     OrderSide,
+    OrderType,
     Portfolio,
     Position,
     PositionSide,
@@ -93,6 +94,9 @@ class BacktestEngine:
             return BacktestResult(initial_capital=self.initial_capital)
 
         timestamps = sorted({b.timestamp for bars in all_bars.values() for b in bars})
+        bars_by_symbol_ts = {
+            symbol: {bar.timestamp: bar for bar in bars} for symbol, bars in all_bars.items()
+        }
 
         self._portfolio = Portfolio(
             total_equity=self.initial_capital,
@@ -112,7 +116,7 @@ class BacktestEngine:
 
         for ts in timestamps:
             for symbol in symbols:
-                bar = self._get_bar_at(all_bars.get(symbol, []), ts)
+                bar = bars_by_symbol_ts.get(symbol, {}).get(ts)
                 if bar is None:
                     continue
 
@@ -126,6 +130,8 @@ class BacktestEngine:
                 signal = await self.strategy.on_bar(symbol, bar)
 
                 if signal is not None:
+                    if signal.order_type == OrderType.MARKET or signal.price is None:
+                        signal.price = bar.close
                     if self.risk_manager is not None:
                         signal = self.risk_manager.check_signal(signal, self._portfolio)
                     if signal is not None:

@@ -95,9 +95,9 @@ class EventBus:
     Handlers run concurrently; one handler's exception does not crash the bus.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._handlers: dict[type[DomainEvent], list[Handler]] = {}
-        self._pending: set[asyncio.Task] = set()
+        self._pending: set[asyncio.Task[None]] = set()
 
     def subscribe(self, event_type: type[DomainEvent], handler: Handler) -> None:
         """Register an async handler for an event type."""
@@ -109,7 +109,7 @@ class EventBus:
         if not handlers:
             return
 
-        tasks = []
+        tasks: list[asyncio.Task[None]] = []
         for h in handlers:
             task = asyncio.create_task(self._safe_invoke(h, event))
             tasks.append(task)

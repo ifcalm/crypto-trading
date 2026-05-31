@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Any, cast
 
 import ccxt.async_support as ccxt_async
 
@@ -18,13 +19,13 @@ from crypto_trading.core.types import (
 )
 
 
-def _to_decimal(value, default: str = "0") -> Decimal:
+def _to_decimal(value: object | None, default: str = "0") -> Decimal:
     if value is None:
         return Decimal(default)
     return Decimal(str(value))
 
 
-_OTYPE_MAP = {
+_OTYPE_MAP: dict[str, OrderType] = {
     "market": OrderType.MARKET,
     "limit": OrderType.LIMIT,
     "stop": OrderType.STOP_LOSS,
@@ -43,7 +44,7 @@ def _parse_ordertype(raw_type: str) -> OrderType:
     return _OTYPE_MAP.get(raw_type.lower(), OrderType.MARKET)
 
 
-def _parse_ohlcv(raw: list) -> OHLCV:
+def _parse_ohlcv(raw: list[Any]) -> OHLCV:
     return OHLCV(
         timestamp=datetime.fromtimestamp(raw[0] / 1000, tz=UTC).replace(tzinfo=None),
         open=Decimal(str(raw[1])),
@@ -54,7 +55,7 @@ def _parse_ohlcv(raw: list) -> OHLCV:
     )
 
 
-def _parse_ticker(raw: dict) -> Ticker:
+def _parse_ticker(raw: dict[str, Any]) -> Ticker:
     return Ticker(
         symbol=raw["symbol"],
         bid=_to_decimal(raw.get("bid")),
@@ -65,7 +66,7 @@ def _parse_ticker(raw: dict) -> Ticker:
     )
 
 
-def _parse_order(raw: dict) -> Order:
+def _parse_order(raw: dict[str, Any]) -> Order:
     return Order(
         id=raw.get("clientOrderId") or raw.get("id", ""),
         exchange_id=raw.get("id"),
@@ -86,7 +87,7 @@ def _parse_order(raw: dict) -> Order:
     )
 
 
-def _parse_position(raw: dict) -> Position:
+def _parse_position(raw: dict[str, Any]) -> Position:
     contracts = _to_decimal(raw.get("contracts") or raw.get("info", {}).get("positionAmt", "0"))
     entry_price = _to_decimal(raw.get("entryPrice"))
     mark_price = _to_decimal(raw.get("markPrice"))
@@ -118,16 +119,16 @@ class BinanceExchange(Exchange):
         market_type: str = "futures",
         testnet: bool = False,
         proxy: str = "",
-    ):
+    ) -> None:
         self._market_type = market_type
         exchange_id = "binance"
-        options: dict = {}
+        options: dict[str, Any] = {}
 
         if market_type == "futures":
             exchange_id = "binanceusdm"
             options["defaultType"] = "future"
 
-        config: dict = {
+        config: dict[str, Any] = {
             "apiKey": api_key,
             "secret": secret_key,
             "enableRateLimit": True,
@@ -146,7 +147,7 @@ class BinanceExchange(Exchange):
                 }
             )
 
-        self._client: ccxt_async.Exchange = getattr(ccxt_async, exchange_id)(config)
+        self._client: Any = getattr(ccxt_async, exchange_id)(config)
 
         if testnet:
             self._client.set_sandbox_mode(True)
@@ -178,33 +179,33 @@ class BinanceExchange(Exchange):
 
         try:
             raw = await self._client.fetch_ohlcv(symbol, timeframe, since_ms, limit)
-            return [_parse_ohlcv(r) for r in raw]
+            return [_parse_ohlcv(r) for r in cast(list[list[Any]], raw)]
         except Exception as e:
             raise ExchangeError(f"Failed to fetch OHLCV for {symbol}: {e}") from e
 
     async def fetch_ticker(self, symbol: str) -> Ticker:
         try:
             raw = await self._client.fetch_ticker(symbol)
-            return _parse_ticker(raw)
+            return _parse_ticker(cast(dict[str, Any], raw))
         except Exception as e:
             raise ExchangeError(f"Failed to fetch ticker for {symbol}: {e}") from e
 
     async def fetch_tickers(self, symbols: list[str] | None = None) -> list[Ticker]:
         try:
             raw = await self._client.fetch_tickers(symbols)
-            return [_parse_ticker(v) for v in raw.values()]
+            return [_parse_ticker(v) for v in cast(dict[str, dict[str, Any]], raw).values()]
         except Exception as e:
             raise ExchangeError(f"Failed to fetch tickers: {e}") from e
 
-    async def fetch_markets(self) -> list[dict]:
+    async def fetch_markets(self) -> list[dict[str, Any]]:
         try:
-            return await self._client.fetch_markets()
+            return cast(list[dict[str, Any]], await self._client.fetch_markets())
         except Exception as e:
             raise ExchangeError(f"Failed to fetch markets: {e}") from e
 
     async def fetch_balance(self) -> dict[str, Balance]:
         try:
-            raw = await self._client.fetch_balance()
+            raw = cast(dict[str, Any], await self._client.fetch_balance())
             balances: dict[str, Balance] = {}
 
             free_dict = raw.get("free", {})
@@ -213,7 +214,7 @@ class BinanceExchange(Exchange):
             # Futures: raw["info"] is a list of position dicts, not a balance dict
             info = raw.get("info", {})
             if isinstance(info, dict) and "balances" in info:
-                for entry in info["balances"]:
+                for entry in cast(list[dict[str, Any]], info["balances"]):
                     asset = entry.get("asset", "")
                     free = _to_decimal(entry.get("free", 0))
                     locked = _to_decimal(entry.get("locked", 0))
@@ -243,10 +244,10 @@ class BinanceExchange(Exchange):
         price: Decimal | None = None,
         stop_price: Decimal | None = None,
         reduce_only: bool = False,
-        params: dict | None = None,
+        params: dict[str, Any] | None = None,
     ) -> Order:
         try:
-            merged_params = params or {}
+            merged_params: dict[str, Any] = params.copy() if params else {}
             if reduce_only:
                 merged_params["reduceOnly"] = True
 
@@ -258,7 +259,7 @@ class BinanceExchange(Exchange):
                 price=float(price) if price is not None else None,
                 params=merged_params,
             )
-            return _parse_order(raw)
+            return _parse_order(cast(dict[str, Any], raw))
         except Exception as e:
             raise OrderError(f"Failed to create order for {symbol}: {e}") from e
 
@@ -272,14 +273,14 @@ class BinanceExchange(Exchange):
     async def fetch_order(self, order_id: str, symbol: str) -> Order:
         try:
             raw = await self._client.fetch_order(order_id, symbol)
-            return _parse_order(raw)
+            return _parse_order(cast(dict[str, Any], raw))
         except Exception as e:
             raise OrderError(f"Failed to fetch order {order_id}: {e}") from e
 
     async def fetch_open_orders(self, symbol: str | None = None) -> list[Order]:
         try:
             raw = await self._client.fetch_open_orders(symbol)
-            return [_parse_order(r) for r in raw]
+            return [_parse_order(r) for r in cast(list[dict[str, Any]], raw)]
         except Exception as e:
             raise ExchangeError(f"Failed to fetch open orders: {e}") from e
 
@@ -294,7 +295,7 @@ class BinanceExchange(Exchange):
             if since is not None:
                 since_ms = int(since.timestamp() * 1000)
             raw = await self._client.fetch_my_trades(symbol, since_ms, limit)
-            return [_parse_order(r) for r in raw]
+            return [_parse_order(r) for r in cast(list[dict[str, Any]], raw)]
         except Exception as e:
             raise ExchangeError(f"Failed to fetch trades: {e}") from e
 
@@ -305,7 +306,7 @@ class BinanceExchange(Exchange):
             raw = await self._client.fetch_positions()
             return [
                 _parse_position(p)
-                for p in raw
+                for p in cast(list[dict[str, Any]], raw)
                 if _to_decimal(p.get("contracts") or p.get("info", {}).get("positionAmt", "0")) != 0
             ]
         except Exception as e:

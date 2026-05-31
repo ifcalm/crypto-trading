@@ -24,7 +24,7 @@ class PaperBroker(Broker):
         fee_rate: Decimal | None = None,
         slippage: Decimal = Decimal("0.0005"),
         leverage: int = 1,
-    ):
+    ) -> None:
         self.market_type = market_type
         self.fee_rate = fee_rate or (
             Decimal("0.0004") if market_type == "futures" else Decimal("0.001")
@@ -32,7 +32,7 @@ class PaperBroker(Broker):
         self.slippage = slippage
         self.leverage = leverage
         self._open_orders: dict[str, Order] = {}
-        self._trades: list[tuple[Order, Order, Decimal]] = []
+        self._trades: list[tuple[Order, Order, float]] = []
 
     async def execute_signal(self, signal: Signal, portfolio: Portfolio) -> Order | None:
         fill_price = signal.price or Decimal("0")
