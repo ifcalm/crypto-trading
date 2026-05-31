@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from collections import defaultdict
+from decimal import Decimal
 from typing import Any
 
 from crypto_trading.core.types import OHLCV, Signal, Ticker
@@ -35,5 +36,5 @@ class Strategy(ABC):
     def _get_bars(self, symbol: str, count: int) -> list[OHLCV]:
         return self._bar_history[symbol][-count:]
 
-    def _get_closes(self, symbol: str, count: int) -> list[float]:
-        return [float(b.close) for b in self._bar_history[symbol][-count:]]
+    def _get_closes(self, symbol: str, count: int) -> list[Decimal]:
+        return [b.close for b in self._bar_history[symbol][-count:]]

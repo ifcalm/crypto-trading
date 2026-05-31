@@ -23,7 +23,7 @@ class RSIReversalStrategy(Strategy):
     def __init__(self, symbols: list[str], params: dict[str, Any] | None = None) -> None:
         super().__init__(symbols, params)
         # Cached Wilder values: (symbol, period) -> (avg_gain, avg_loss, prev_close)
-        self._rsi_cache: dict[tuple[str, int], tuple[float, float, float | None]] = {}
+        self._rsi_cache: dict[tuple[str, int], tuple[float, float, Decimal | None]] = {}
 
     @property
     def _period(self) -> int:
@@ -37,7 +37,7 @@ class RSIReversalStrategy(Strategy):
     def _overbought(self) -> float:
         return float(self.params.get("overbought", 70))
 
-    def _rsi(self, symbol: str, closes: list[float]) -> float | None:
+    def _rsi(self, symbol: str, closes: list[Decimal]) -> float | None:
         """Wilder's RSI with incremental O(1) update per bar."""
         period = self._period
         if len(closes) < period + 1:
@@ -47,8 +47,8 @@ class RSIReversalStrategy(Strategy):
         avg_gain, avg_loss, prev_close = self._rsi_cache.get(key, (0.0, 0.0, None))
 
         if prev_close is not None:
-            # Incremental: update single bar
-            diff = closes[-1] - prev_close
+            # Incremental: update single bar (price diff as float for Wilder smoothing)
+            diff = float(closes[-1] - prev_close)
             gain = diff if diff > 0 else 0.0
             loss = abs(diff) if diff < 0 else 0.0
             avg_gain = (avg_gain * (period - 1) + gain) / period
@@ -58,7 +58,7 @@ class RSIReversalStrategy(Strategy):
             gains = 0.0
             losses = 0.0
             for i in range(-period, 0):
-                diff = closes[i + 1] - closes[i]
+                diff = float(closes[i + 1] - closes[i])
                 if diff > 0:
                     gains += diff
                 else:

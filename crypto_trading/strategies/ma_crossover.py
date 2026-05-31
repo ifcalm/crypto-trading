@@ -19,7 +19,7 @@ class MACrossoverStrategy(Strategy):
 
     def __init__(self, symbols: list[str], params: dict[str, Any] | None = None) -> None:
         super().__init__(symbols, params)
-        self._sma_cache: dict[tuple[str, int], float] = {}  # (symbol, period) -> sum
+        self._sma_cache: dict[tuple[str, int], Decimal] = {}  # (symbol, period) -> sum
 
     @property
     def _fast_period(self) -> int:
@@ -30,17 +30,17 @@ class MACrossoverStrategy(Strategy):
         return int(self.params.get("slow_period", 50))
 
     def _compute_sma_pair(
-        self, symbol: str, closes: list[float], period: int
-    ) -> tuple[float, float] | None:
+        self, symbol: str, closes: list[Decimal], period: int
+    ) -> tuple[Decimal, Decimal] | None:
         """Return (prev_sma, curr_sma) for a given period. Incremental O(1)."""
         if len(closes) < period + 1:
             return None
 
         key = (symbol, period)
-        curr_sum = self._sma_cache.get(key, 0.0)
+        curr_sum = self._sma_cache.get(key, Decimal("0"))
 
         if curr_sum == 0:
-            curr_sum = sum(closes[-period:])
+            curr_sum = sum(closes[-period:], Decimal("0"))
         else:
             curr_sum += closes[-1] - closes[-period - 1]
 
