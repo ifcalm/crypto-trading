@@ -1,16 +1,23 @@
 import asyncio
+from decimal import Decimal
 from enum import Enum
 
 from crypto_trading.core.errors import ExchangeError, InsufficientBalanceError, OrderError
 from crypto_trading.core.exchange import Exchange
+from crypto_trading.core.logging import get_logger
 from crypto_trading.core.types import (
     Order,
+    OrderSide,
     OrderStatus,
     OrderType,
     Portfolio,
+    Position,
+    PositionSide,
     Signal,
 )
 from crypto_trading.execution.broker import Broker
+
+log = get_logger(__name__)
 
 
 class LiveMode(Enum):
@@ -76,6 +83,7 @@ class LiveBroker(Broker):
             raise OrderError(str(e)) from e
 
         if order.status == OrderStatus.CLOSED:
+            self._apply_fill(signal, portfolio, order)
             return order
 
         elapsed = 0.0
@@ -92,11 +100,75 @@ class LiveBroker(Broker):
                     OrderStatus.REJECTED,
                     OrderStatus.EXPIRED,
                 ):
+                    if updated.status == OrderStatus.CLOSED:
+                        self._apply_fill(signal, portfolio, updated)
                     return updated
             except ExchangeError:
                 continue
 
         return order
+
+    def _apply_fill(self, signal: Signal, portfolio: Portfolio, order: Order) -> None:
+        """Update portfolio to reflect a filled order."""
+        fill_price = order.price or signal.price or Decimal("0")
+        filled = order.filled if order.filled > 0 else signal.amount
+        if fill_price == 0 or filled <= 0:
+            return
+
+        notional = filled * fill_price
+        fee_cost = (
+            Decimal(str(order.fee.get("cost", 0)))
+            if order.fee
+            else notional * self.exchange.trading_fee
+        )
+        margin = notional / Decimal(signal.leverage)
+        target_side = PositionSide.LONG if signal.side == OrderSide.BUY else PositionSide.SHORT
+        existing = portfolio.positions.get(signal.symbol)
+
+        if signal.reduce_only:
+            if existing is not None:
+                portfolio.free_balance += existing.margin
+                del portfolio.positions[signal.symbol]
+                log.info(
+                    "broker.position_closed",
+                    symbol=signal.symbol,
+                    price=float(fill_price),
+                )
+            return
+
+        if existing is not None and existing.side != target_side:
+            portfolio.free_balance += existing.margin
+            del portfolio.positions[signal.symbol]
+
+        if signal.symbol in portfolio.positions:
+            return
+
+        if margin + fee_cost > portfolio.free_balance:
+            log.warning(
+                "broker.insufficient_margin",
+                symbol=signal.symbol,
+                required=float(margin + fee_cost),
+                available=float(portfolio.free_balance),
+            )
+            return
+
+        portfolio.free_balance -= margin + fee_cost
+        portfolio.positions[signal.symbol] = Position(
+            symbol=signal.symbol,
+            side=target_side,
+            quantity=filled,
+            entry_price=fill_price,
+            mark_price=fill_price,
+            leverage=signal.leverage,
+            margin=margin,
+        )
+        log.info(
+            "broker.position_opened",
+            symbol=signal.symbol,
+            side=target_side.value,
+            quantity=float(filled),
+            price=float(fill_price),
+        )
 
     async def cancel_open_orders(self, symbol: str) -> None:
         try:

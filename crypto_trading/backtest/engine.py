@@ -162,22 +162,9 @@ class BacktestEngine:
             total_fees=sum((t.fee for t in self._trades), Decimal("0")),
         )
 
-    def _get_bar_at(self, bars: list[OHLCV], ts: datetime) -> OHLCV | None:
-        for b in bars:
-            if b.timestamp == ts:
-                return b
-        return None
-
     def _update_mark_price(self, symbol: str, price: Decimal) -> None:
-        if self._portfolio is None:
-            return
-        pos = self._portfolio.positions.get(symbol)
-        if pos is not None:
-            pos.mark_price = price
-            if pos.side == PositionSide.LONG:
-                pos.unrealized_pnl = (price - pos.entry_price) * pos.quantity
-            else:
-                pos.unrealized_pnl = (pos.entry_price - price) * pos.quantity
+        if self._portfolio is not None:
+            self._portfolio.update_mark_prices({symbol: price})
 
     def _settle_funding(self, ts: datetime) -> None:
         if self._last_funding_time is None:
@@ -349,17 +336,7 @@ class BacktestEngine:
     def _record_equity(self, ts: datetime) -> None:
         if self._portfolio is None:
             return
-        equity = self._portfolio.free_balance
-        for pos in self._portfolio.positions.values():
-            equity += pos.margin + pos.unrealized_pnl
-        self._portfolio.total_equity = equity
-        if equity > self._portfolio.peak_equity:
-            self._portfolio.peak_equity = equity
-            self._portfolio.current_drawdown = Decimal("0")
-        elif self._portfolio.peak_equity > 0:
-            self._portfolio.current_drawdown = (
-                self._portfolio.peak_equity - equity
-            ) / self._portfolio.peak_equity
+        equity = self._portfolio.recompute_equity()
         self._equity_curve.append((ts, equity))
 
     async def _init_db(self) -> None:
